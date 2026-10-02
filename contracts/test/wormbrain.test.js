@@ -14,7 +14,7 @@ const CHUNK = 1;
 const ADV_GAS = { gasLimit: 12_000_000 };
 
 async function deployBrain() {
-  const F = await ethers.getContractFactory("WormBrain");
+  const F = await ethers.getContractFactory("WormBrainV2");
   const g = W.groups;
   const b = await F.deploy();                 // near-empty constructor (EIP-3860 on BSC mainnet)
   await b.waitForDeployment();
@@ -38,7 +38,7 @@ async function advanceSteps(b, total) {
   }
 }
 
-describe("WormBrain -- on-chain life == brain_spec golden trajectory", function () {
+describe("WormBrainV2 -- on-chain life == brain_spec golden trajectory (+ learning)", function () {
   this.timeout(600_000);
   let brain;
 
@@ -70,7 +70,7 @@ describe("WormBrain -- on-chain life == brain_spec golden trajectory", function 
     await (await brain.stimulate(st.idx, st.ampQ)).wait();
     await advanceSteps(brain, G.steps - st.beforeStep);  // then the remaining 30
 
-    // Golden state hash (covers all 912 words of V/gate/stim/pos/heading/tick) must be byte-identical.
+    // Golden state hash (covers all 1214 words of V/gate/stim/M/pos/heading/tick) must be byte-identical.
     // Note: brain_spec's hexdigest has no 0x prefix, the on-chain return value has one.
     expect(await brain.stateHash()).to.equal("0x" + G.finalStateHash);
     expect(await brain.tick()).to.equal(G.finalTick);
@@ -83,7 +83,11 @@ describe("WormBrain -- on-chain life == brain_spec golden trajectory", function 
     for (const i of probes) {
       expect(await brain.V(i)).to.equal(G.finalV[i], `V[${i}] mismatch`);
       expect(await brain.spikeCount(i)).to.equal(G.finalSpike[i], `spike[${i}] mismatch`);
+      expect(await brain.M(i)).to.equal(G.finalM[i], `M[${i}] mismatch`);
     }
+    // the stimulated hub neuron carries a persistent memory trace, eroded by its own spikes
+    expect(await brain.M(st.idx)).to.not.equal(0);
+    expect(await brain.M(st.idx)).to.be.lt(BigInt(st.ampQ) / 4n); // habituation ate part of the write
   });
 
   it("stimulation really changes the neuron trajectory", async function () {
@@ -94,5 +98,30 @@ describe("WormBrain -- on-chain life == brain_spec golden trajectory", function 
     await advanceSteps(poked, 6);
     expect(await poked.V(0)).to.not.equal(await base.V(0));
     expect(await poked.stateHash()).to.not.equal(await base.stateHash());
+  });
+
+  it("learning: a touch writes persistent memory that outlives the stimulus current", async function () {
+    const base = await deployBrain();
+    const touched = await deployBrain();
+    await (await touched.stimulate(0, 4_000_000)).wait(); // +3.81 Q20 -> M write of ~0.95 Q20
+    // run long enough for the stimulus current itself to decay to dust (0.9^45 ~ 0.0087)
+    await advanceSteps(base, 45);
+    await advanceSteps(touched, 45);
+    const m = await touched.M(0);
+    expect(m).to.not.equal(0);                       // memory persists ...
+    expect(await base.M(0)).to.equal(0);             // ... an untouched worm has none
+    expect(m).to.be.lte(2097152n);                   // clamped to M_CAP
+    // the chronic bias current keeps the two animals apart even after the touch faded
+    expect(await touched.stateHash()).to.not.equal(await base.stateHash());
+  });
+
+  it("habituation: repeated spiking erodes the memory trace", async function () {
+    const b = await deployBrain();
+    await (await b.stimulate(G.stimuli[0].idx, G.stimuli[0].ampQ)).wait();
+    const m0 = await b.M(G.stimuli[0].idx);          // fresh write, no spikes consumed yet
+    await advanceSteps(b, 20);                       // the stimulated hub spikes repeatedly
+    const m1 = await b.M(G.stimuli[0].idx);
+    expect(m1).to.be.lt(m0);                         // memory was spent by firing
+    expect(m1).to.be.gt(0);                          // but not erased: the worm still remembers
   });
 });

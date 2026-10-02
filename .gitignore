@@ -8,6 +8,10 @@ node_modules/
 contracts/artifacts/
 contracts/cache/
 contracts/genome_args.json
+frontend/dist/
+.wrangler/
+worker/.wrangler/
+site/.wrangler/
 
 # Local preview pages (not part of the repo for now)
 dapp/

@@ -5,6 +5,7 @@
   "description": "Cloudflare Worker bridge for the on-chain WormBrain (deploy with wrangler)",
   "scripts": {
     "dev": "wrangler dev",
+    "dev:node": "node dev_server.mjs",
     "deploy": "wrangler deploy",
     "test:local": "node test_local.mjs"
   }

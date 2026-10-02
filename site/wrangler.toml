@@ -1,0 +1,23 @@
+# Cloudflare Worker serving the WBB 3D frontend as static assets.
+# Bound to the project's own apex + www through Worker custom domains, which
+# auto-create their DNS records on deploy. (The Pages custom-domain path could
+# not activate: the wrangler OAuth token has pages:write but no DNS-edit scope,
+# so Pages reported "CNAME record not set". Workers custom domains provision
+# the DNS themselves -- the same mechanism already serving api.bscworm.com.)
+#
+# Deploy from this directory:  npx wrangler deploy
+# Assets come straight from the Vite build in ../frontend/dist (VITE_API_BASE
+# is baked to https://api.bscworm.com at build time, so the SPA calls the API
+# worker cross-origin exactly as it did from the pages.dev URL).
+name = "wbb-site"
+compatibility_date = "2024-11-01"
+workers_dev = true # keep the workers.dev URL alive as a secondary endpoint
+
+routes = [
+  { pattern = "bscworm.com", custom_domain = true },
+  { pattern = "www.bscworm.com", custom_domain = true },
+]
+
+[assets]
+directory = "../frontend/dist"
+not_found_handling = "single-page-application"

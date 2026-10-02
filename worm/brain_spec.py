@@ -61,6 +61,16 @@ NOISE_AMP = q(0.9)               # background noise amplitude
 STIM_DECAY = q(0.9)              # per-step decay factor of injected stimulus current
 STIM_CAP   = q(8.0)              # per-neuron stimulus current cap
 
+# ---- v2 memory trace (on-chain learning) ----
+# Every stimulation writes a persistent per-neuron memory M (sensitization);
+# M drives a chronic bias current (expression); every spike of that neuron
+# erodes M (habituation). M never vanishes on its own: the worm remembers
+# every touch for the rest of its on-chain life.
+K_MEM  = q(0.25)                 # memory write gain: dM = K_MEM * amp
+M_CAP  = q(2.0)                  # memory clamp (keeps the bias sub-threshold)
+G_MEM  = q(0.25)                 # expression gain: I_sens += G_MEM * M  (max +-0.5)
+M_SPIKE_DECAY = q(0.995)         # habituation: M *= 0.995 per spike of that neuron
+
 # sensory gains
 G_ATTR_C   = q(2.4)              # attractant sensing 2.4*c
 G_ATTR_DC  = q(4.8)              # 0.6*dcdt*8 = 4.8*max(dcdt,0)
@@ -159,6 +169,7 @@ class State:
         self.gate = [0] * N
         self.spike = [0] * N
         self.stim = [0] * N              # injected external stimulus current (Q20), decays each step
+        self.M = [0] * N                 # v2 persistent memory trace per neuron (Q20), written by stimulate
         # position: start at (12,10) mm; heading unit vector aimed at food (one-off float init)
         self.px = q(12.0); self.py = q(10.0)
         ang = math.atan2(float(FOOD_Y - self.py), float(FOOD_X - self.px))
@@ -179,13 +190,15 @@ class State:
 
     def encode_state(self):
         """Canonical encoding: 32-byte prefix + one 32-byte big-endian word per integer (byte-reproducible by Solidity sha256)."""
-        buf = [b"WORM-BRAIN-v1".ljust(32, b"\x00")]
+        buf = [b"WORM-BRAIN-v2".ljust(32, b"\x00")]
         for i in range(N):
             buf.append(self._w(self.V[i]))
         for i in range(N):
             buf.append(self._w(self.gate[i]))
         for i in range(N):
             buf.append(self._w(self.stim[i]))
+        for i in range(N):
+            buf.append(self._w(self.M[i]))
         buf.append(self._w(self.px)); buf.append(self._w(self.py))
         buf.append(self._w(self.hx)); buf.append(self._w(self.hy))
         buf.append(self._w(self.tick, signed=False))
@@ -217,6 +230,10 @@ class State:
         for i in range(N):
             if self.stim[i]:
                 I_sens[i] += self.stim[i]
+        # v2 memory expression: persistent bias current from the memory trace
+        for i in range(N):
+            if self.M[i]:
+                I_sens[i] += tdiv(G_MEM * self.M[i], S)
 
         # gate low-pass: gate += (-gate + (V-0.4)+) * dt/TAU_SYN
         for i in range(N):
@@ -244,6 +261,9 @@ class State:
                 self.spike[i] += 1
                 fired_any += 1
                 self.V[i] -= POST_SUP
+                # v2 habituation: every spike erodes this neuron's memory trace
+                if self.M[i]:
+                    self.M[i] = tdiv(self.M[i] * M_SPIKE_DECAY, S)
             self.V[i] = clip(self.V[i], V_LO, V_HI)
         self.total_spikes += fired_any
 
@@ -293,8 +313,10 @@ class State:
         self.tick += 1
 
     def stimulate(self, i, amp):
-        """External stimulation: inject current into neuron i (Q20); takes effect next step and decays beat by beat."""
+        """External stimulation: inject current into neuron i (Q20); takes effect next step and decays beat by beat.
+        v2: the touch also writes a persistent memory trace (sensitization) that outlives the current itself."""
         self.stim[i] = clip(self.stim[i] + amp, -STIM_CAP, STIM_CAP)
+        self.M[i] = clip(self.M[i] + tdiv(K_MEM * amp, S), -M_CAP, M_CAP)
 
     def _rotate(self, dth):
         # first-order small-angle rotation (hx,hy) -> (hx - hy*dth, hy + hx*dth), then isqrt renormalize to unit length
@@ -366,6 +388,7 @@ def dump_weights():
             "V_THRESH": V_THRESH, "POST_SUP": POST_SUP, "I_CAP": I_CAP,
             "V_LO": V_LO, "V_HI": V_HI, "GAIN": GAIN, "NOISE_AMP": NOISE_AMP,
             "STIM_DECAY": STIM_DECAY, "STIM_CAP": STIM_CAP,
+            "K_MEM": K_MEM, "M_CAP": M_CAP, "G_MEM": G_MEM, "M_SPIKE_DECAY": M_SPIKE_DECAY,
             "G_ATTR_C": G_ATTR_C, "G_ATTR_DC": G_ATTR_DC, "G_OLI": G_OLI,
             "AVERT_TH": AVERT_TH, "G_AVERT": G_AVERT,
             "FOOD_X": FOOD_X, "FOOD_Y": FOOD_Y, "R_FIELD": R_FIELD,
@@ -414,15 +437,17 @@ def main():
         "finalV": s.V,
         "finalGate": s.gate,
         "finalStim": s.stim,
+        "finalM": s.M,
         "finalSpike": s.spike,
         "spikingNeurons": sum(1 for x in s.spike if x > 0),
+        "memoryNeurons": sum(1 for x in s.M if x != 0),
         "approach": {"earlyDist": d0, "lateDist": d1, "ratio": d0 / max(d1, 1)},
         "checkpoints": checkpoints,
     }
     (DATA / "brain_golden.json").write_text(json.dumps(golden), encoding="utf-8")
     print(json.dumps({k: golden[k] for k in
                       ("finalStateHash", "finalTick", "finalTotalSpikes",
-                       "spikingNeurons", "approach")}, indent=2))
+                       "spikingNeurons", "memoryNeurons", "approach")}, indent=2))
     print("\ngolden trajectory -> worm/data/brain_golden.json ; connectome -> worm/data/brain_weights.json")
 
 

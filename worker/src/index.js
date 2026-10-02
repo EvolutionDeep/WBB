@@ -5,25 +5,22 @@
  *   GET  /api/snapshot   aggregated read of WormBrain state (tick, V/gate/stim/spikeCount
  *                        for all 302 neurons, body position/heading, stateHash) with a short
  *                        server-side cache so the browser never fires 900 RPC calls itself.
- *   GET  /api/events     recent Advanced / Stimulated logs from the contract (on-chain proof
- *                        that a stimulation landed -> the frontend reacts to THAT, not to the
- *                        optimistic click), plus pending->landed correlation.
+ *   GET  /api/events     recent Advanced / Stimulated logs from the contract, so the
+ *                        frontend can show on-chain history (read-only).
  *   GET  /api/status     cheap health check (contract, tick, cache age).
- *   POST /api/stimulate  enqueue a stimulation REQUEST {idx, amp} (the worker never holds a
- *                        private key -- nothing is signed here). The resident daemon drains
- *                        the queue and pays for the real stimulate() tx on BSC mainnet.
- *   GET  /api/pending    daemon-only (X-Daemon-Key) list of queued requests.
- *   POST /api/ack        daemon-only confirmation that a request landed on-chain (txHash).
+ *   POST /api/push-snapshot / /api/push-events  daemon-only (X-Daemon-Key) feeds so the
+ *                        poll path costs zero extra RPC; the worker only ever READS the chain.
  *
- * Env (wrangler): BRAIN_ADDRESS, BSC_RPC, DAEMON_KEY, STIM_QUEUE (KV, optional; falls back
- * to in-memory queue which is per-isolate and best-effort -- fine for demos, KV is 1 source
- * of truth when attached).
+ * Env (wrangler): BRAIN_ADDRESS, BSC_RPC, DAEMON_KEY, WBB_STORE (KV, shared snapshot/events
+ * cache across isolates). This worker is a pure read-only bridge: it never enqueues or
+ * sends any transaction and holds no private key.
  */
 
 const SEL = {
   V: "0x76cf132b",
   gate: "0x87a99866",
   stim: "0x9ce72e78",
+  M: "0xd6c85529",
   spikeCount: "0x4eb642ee",
   tick: "0x3eaf5d9f",
   totalSpikes: "0x3dda081a",
@@ -42,11 +39,27 @@ const EV = {
 };
 
 const N_NEURONS = 302;
-const SNAPSHOT_TTL_S = 8;      // server-side cache age for snapshots
+const SNAPSHOT_TTL_S = 30;     // on-chain state only moves on ~300s beats; 1217 eth_calls per rebuild
+const EVENTS_TTL_S = 30;       // getLogs is the other metered hot path; cache it too
 const DEFAULT_BLOCKS = 400;    // ~20 min of BSC blocks at 3s
-const MAX_QUEUE_PER_IP = 6;    // crude rate limit against UI spam
 
 // ---- tiny helpers ----
+
+const FALLBACK_RPCS = [
+  "https://bsc-dataseed1.bnbchain.org",
+  "https://bsc-dataseed.binance.org",
+  "https://bsc-dataseed1.defibit.io",
+];
+
+// Public dataseeds carry the polling load (free, no CU meter); a configured
+// BSC_RPC (comma-separated private endpoints) is kept as LAST-resort failover
+// so a metered provider is only touched when every public node fails.
+const rpcUrls = (env) => [
+  ...FALLBACK_RPCS,
+  ...(env.BSC_RPC ? env.BSC_RPC.split(",").map((s) => s.trim()).filter(Boolean) : []),
+];
+
+const FETCH_TIMEOUT_MS = 12000; // fail fast to the next endpoint, never hang a poll
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), {
@@ -69,45 +82,76 @@ function toSigned(hexWord) {
 }
 
 async function rpc(env, method, params) {
-  const res = await fetch(env.BSC_RPC || "https://bsc-dataseed1.bnbchain.org", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  const urls = rpcUrls(env);
+  const start = RR++ % urls.length; // spread singles across endpoints
+  let lastErr = new Error("no rpc endpoints");
+  for (let k = 0; k < urls.length; k++) {
+    const url = urls[(start + k) % urls.length];
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      const j = await res.json();
+      if (j.error) throw new Error(`rpc ${method}: ${JSON.stringify(j.error)}`);
+      return j.result;
+    } catch (e) {
+      lastErr = e; // next endpoint: public dataseeds rate-limit per method
+    }
+  }
+  throw lastErr;
+}
+let RR = 0;
+
+// bounded-concurrency map; used by the serial eth_call fallback so a cold
+// snapshot rebuild (1217 getters) finishes in tens of seconds, not minutes
+async function poolMap(items, conc, fn) {
+  const out = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(conc, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i], i);
+    }
   });
-  const j = await res.json();
-  if (j.error) throw new Error(`rpc ${method}: ${JSON.stringify(j.error)}`);
-  return j.result;
+  await Promise.all(workers);
+  return out;
 }
 
 async function rpcBatch(env, calls) {
-  // calls: [{to,data}] -> array of hex results, order preserved; falls back to serial.
-  const body = calls.map((c, i) => ({
-    jsonrpc: "2.0",
-    id: i + 1,
-    method: "eth_call",
-    params: [{ to: c.to, data: c.data }, "latest"],
-  }));
-  try {
-    const res = await fetch(env.BSC_RPC || "https://bsc-dataseed1.bnbchain.org", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const j = await res.json();
-    if (Array.isArray(j)) {
-      const out = new Array(calls.length);
-      for (const r of j) {
-        if (r.error) throw new Error(JSON.stringify(r.error));
-        out[r.id - 1] = r.result;
+  // calls: [{to,data}] -> array of hex results, order preserved.
+  // Batch JSON-RPC is only attempted against configured PRIVATE endpoints
+  // (public dataseeds cap batches at 100 and rate-limit batched eth_call);
+  // the public path is concurrent single eth_calls rotated over endpoints.
+  const privateUrls = env.BSC_RPC ? env.BSC_RPC.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  for (const url of privateUrls) {
+    try {
+      const out = [];
+      for (let off = 0; off < calls.length; off += 100) {
+        const chunk = calls.slice(off, off + 100);
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(chunk.map((c, i) => ({
+            jsonrpc: "2.0", id: i + 1, method: "eth_call", params: [{ to: c.to, data: c.data }, "latest"],
+          }))),
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+        });
+        const j = await res.json();
+        if (!Array.isArray(j) || j.length !== chunk.length) throw new Error("bad batch response");
+        for (const r of j.slice().sort((a, b) => a.id - b.id)) {
+          if (r.error) throw new Error(JSON.stringify(r.error));
+          out.push(r.result);
+        }
       }
       return out;
+    } catch (e) {
+      // private endpoint down/limited: fall through to the public pool
     }
-  } catch (e) {
-    // some public endpoints disable batching -> serial fallback (slower but correct)
   }
-  const out = [];
-  for (const c of calls) out.push(await rpc(env, "eth_call", [{ to: c.to, data: c.data }, "latest"]));
-  return out;
+  return poolMap(calls, 16, (c) => rpc(env, "eth_call", [{ to: c.to, data: c.data }, "latest"]));
 }
 
 const word = (sel, idx) => sel + BigInt.asUintN(256, BigInt(idx)).toString(16).padStart(64, "0");
@@ -116,20 +160,23 @@ const word = (sel, idx) => sel + BigInt.asUintN(256, BigInt(idx)).toString(16).p
 
 let cache = { at: 0, data: null }; // per-isolate cache; CF gives us seconds-scale reuse
 
+// Daemon-pushed snapshots: the resident node reads the full on-chain state
+// once per beat (~300s) and POSTs it here, so the poll path costs ZERO rpc
+// calls. A metered provider therefore only ever sees a rebuild when no push
+// has arrived (cold start or a dead daemon).
+const PUSH_TTL_S = 900;
+let pushCache = { at: 0, data: null };
+
 async function buildSnapshot(env) {
-  const addr = env.BRAIN_ADDRESS || "0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B";
+  const addr = env.BRAIN_ADDRESS || "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
   const scalars = ["tick", "totalSpikes", "px", "py", "hx", "hy", "connRoot", "edgeCount", "stateHash"];
   const calls = [];
   for (const s of scalars) calls.push({ to: addr, data: SEL[s] });
-  const ARRAYS = [["V", SEL.V], ["gate", SEL.gate], ["stim", SEL.stim], ["spikeCount", SEL.spikeCount]];
+  const ARRAYS = [["V", SEL.V], ["gate", SEL.gate], ["stim", SEL.stim], ["M", SEL.M], ["spikeCount", SEL.spikeCount]];
   for (const [, sel] of ARRAYS) for (let i = 0; i < N_NEURONS; i++) calls.push({ to: addr, data: word(sel, i) });
 
-  // chunked batches: 1 batch request per 300 calls -> ~4 requests total
-  const results = [];
-  for (let off = 0; off < calls.length; off += 300) {
-    const part = await rpcBatch(env, calls.slice(off, off + 300));
-    results.push(...part);
-  }
+  // one logical read of 1519 getters; rpcBatch pools it over public endpoints
+  const results = await rpcBatch(env, calls);
 
   const out = {};
   scalars.forEach((s, i) => {
@@ -150,20 +197,106 @@ async function buildSnapshot(env) {
 
 async function apiSnapshot(env) {
   const now = Date.now() / 1000;
+  if (pushCache.data && now - pushCache.at < PUSH_TTL_S) {
+    return json({ ...pushCache.data, cached: true, source: "daemon-push" });
+  }
+  // memory is per-isolate: a push only lands on ONE of them, so the shared
+  // KV copy is what makes daemon-push consistent across the whole edge
+  if (env.WBB_STORE) {
+    const raw = await env.WBB_STORE.get("snapshot");
+    if (raw) {
+      try {
+        const p = JSON.parse(raw);
+        if (p && p.data && now - p.at < PUSH_TTL_S) {
+          pushCache = { at: p.at, data: p.data };
+          return json({ ...p.data, cached: true, source: "daemon-push" });
+        }
+      } catch { /* corrupt value: fall through to a rebuild */ }
+    }
+  }
   if (cache.data && now - cache.at < SNAPSHOT_TTL_S) return json({ ...cache.data, cached: true });
   const data = await buildSnapshot(env);
   cache = { at: now, data };
   return json({ ...data, cached: false });
 }
 
+async function apiPushSnapshot(env, req) {
+  if (!env.DAEMON_KEY || req.headers.get("x-daemon-key") !== env.DAEMON_KEY) return json({ error: "forbidden" }, 403);
+  let d;
+  try { d = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const okShape =
+    Number.isInteger(d.tick) && Number.isInteger(d.totalSpikes) &&
+    ["V", "gate", "stim", "M", "spikes"].every((k) => Array.isArray(d[k]) && d[k].length === N_NEURONS);
+  if (!okShape) return json({ error: "snapshot shape rejected" }, 400);
+  pushCache = { at: Date.now() / 1000, data: d };
+  if (env.WBB_STORE) {
+    await env.WBB_STORE.put("snapshot", JSON.stringify({ at: pushCache.at, data: d }));
+  }
+  return json({ pushed: true, tick: d.tick });
+}
+
 // ---- events ----
 
+let evCache = { key: "", at: 0, data: null };
+
+// Daemon-pushed event ring: public BSC endpoints refuse eth_getLogs outright
+// (and the metered fallback is CU-exhausted), so the resident node decodes the
+// logs of ITS OWN receipts (advance) and pushes them here; the browser only ever
+// reads this ring to show on-chain history.
+let evPush = [];
+
+async function apiPushEvents(env, req) {
+  if (!env.DAEMON_KEY || req.headers.get("x-daemon-key") !== env.DAEMON_KEY) return json({ error: "forbidden" }, 403);
+  let body;
+  try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  const evs = Array.isArray(body.events) ? body.events : [];
+  // adopt the shared KV ring first so pushes from different isolates merge
+  let ring = evPush;
+  if (env.WBB_STORE) {
+    const raw = await env.WBB_STORE.get("events");
+    if (raw) { try { const kv = JSON.parse(raw); if (Array.isArray(kv) && kv.length) ring = kv; } catch { /* rebuild */ } }
+  }
+  for (const ev of evs) {
+    if (!ev || (ev.kind !== "Advanced" && ev.kind !== "Stimulated") || typeof ev.tx !== "string") continue;
+    if (ring.some((x) => x.tx === ev.tx && x.kind === ev.kind && x.idx === ev.idx && x.tick === ev.tick)) continue;
+    ring.push(ev);
+  }
+  if (ring.length > 240) ring = ring.slice(-240);
+  evPush = ring;
+  if (env.WBB_STORE) await env.WBB_STORE.put("events", JSON.stringify(ring));
+  return json({ pushed: evs.length, total: ring.length });
+}
+
 async function apiEvents(env, url) {
-  const addr = env.BRAIN_ADDRESS || "0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B";
-  const blocks = Math.min(2000, parseInt(url.searchParams.get("blocks") || DEFAULT_BLOCKS, 10));
+  const addr = env.BRAIN_ADDRESS || "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
+  let blocks = Math.min(2000, parseInt(url.searchParams.get("blocks") || DEFAULT_BLOCKS, 10));
+  if (!evPush.length && env.WBB_STORE) {
+    const raw = await env.WBB_STORE.get("events");
+    if (raw) { try { const kv = JSON.parse(raw); if (Array.isArray(kv)) evPush = kv; } catch { /* ignore */ } }
+  }
+  if (evPush.length) {
+    return json({ count: evPush.length, events: evPush.slice(-120), cached: true, source: "daemon-push" });
+  }
+  const key = `${addr}:${blocks}`;
+  const now = Date.now() / 1000;
+  if (evCache.data && evCache.key === key && now - evCache.at < EVENTS_TTL_S) {
+    return json({ ...evCache.data, cached: true });
+  }
   const latest = BigInt(await rpc(env, "eth_blockNumber", []));
-  const from = "0x" + (latest > BigInt(blocks) ? latest - BigInt(blocks) : 0n).toString(16);
-  const logs = await rpc(env, "eth_getLogs", [{ address: addr, from: "0x" + BigInt(from).toString(16), topics: [[EV.Advanced, EV.Stimulated]] }]);
+  // public dataseeds throttle eth_getLogs by range; halve until one fits (we only need recent events)
+  let logs = null;
+  let lastErr = null;
+  while (blocks >= 24) {
+    const from = "0x" + (latest > BigInt(blocks) ? latest - BigInt(blocks) : 0n).toString(16);
+    try {
+      logs = await rpc(env, "eth_getLogs", [{ address: addr, fromBlock: from, topics: [[EV.Advanced, EV.Stimulated]] }]);
+      break;
+    } catch (e) {
+      lastErr = e;
+      blocks = Math.floor(blocks / 2);
+    }
+  }
+  if (!logs) throw lastErr;
   const evs = logs.map((lg) => {
     const t = lg.topics[0];
     if (t === EV.Stimulated) {
@@ -184,62 +317,9 @@ async function apiEvents(env, url) {
       totalSpikes: toSigned(lg.data.slice(66, 130)),
     };
   });
-  return json({ count: evs.length, events: evs.slice(-120) });
-}
-
-// ---- stimulation request queue ----
-
-const memQueue = new Map(); // id -> {idx, amp, at, ip, tx} (per-isolate fallback)
-
-function queuePut(env, item) {
-  if (env.STIM_QUEUE) return env.STIM_QUEUE.put(item.id, JSON.stringify(item));
-  memQueue.set(item.id, item);
-  return Promise.resolve();
-}
-
-async function queueList(env) {
-  if (env.STIM_QUEUE) {
-    const keys = await env.STIM_QUEUE.list({ limit: 100 });
-    const items = [];
-    for (const k of keys.keys) {
-      const raw = await env.STIM_QUEUE.get(k.name);
-      if (raw) items.push(JSON.parse(raw));
-    }
-    return items;
-  }
-  return [...memQueue.values()];
-}
-
-async function apiStimulate(env, req) {
-  let body;
-  try { body = await req.json(); } catch { return json({ error: "bad json" }, 400); }
-  const idx = Number(body.idx), amp = Number(body.amp);
-  if (!Number.isInteger(idx) || idx < 0 || idx >= N_NEURONS) return json({ error: "idx must be 0..301" }, 400);
-  if (!Number.isFinite(amp) || Math.abs(amp) > 8.1 * 1048576) return json({ error: "amp out of range (Q20, cap 8.1)" }, 400);
-  const ip = req.headers.get("cf-connecting-ip") || "anon";
-  const now = Date.now();
-  let recent = 0;
-  for (const it of await queueList(env)) {
-    if (it.ip === ip && now - it.at < 60_000) recent++;
-  }
-  if (recent >= MAX_QUEUE_PER_IP) return json({ error: "rate limited: wait for your stimulations to land on-chain" }, 429);
-  const item = { id: `${now.toString(36)}-${Math.random().toString(36).slice(2, 8)}`, idx, amp: Math.round(amp), at: now, ip };
-  await queuePut(env, item);
-  return json({ queued: true, id: item.id, note: "a resident node will pay for the stimulate() tx; watch /api/events for the on-chain Stimulated log" });
-}
-
-async function apiPending(env, req) {
-  if (!env.DAEMON_KEY || req.headers.get("x-daemon-key") !== env.DAEMON_KEY) return json({ error: "forbidden" }, 403);
-  const items = (await queueList(env)).filter((i) => !i.tx);
-  return json({ pending: items });
-}
-
-async function apiAck(env, req) {
-  if (!env.DAEMON_KEY || req.headers.get("x-daemon-key") !== env.DAEMON_KEY) return json({ error: "forbidden" }, 403);
-  const { id, tx } = await req.json();
-  if (env.STIM_QUEUE) { await env.STIM_QUEUE.delete(id); return json({ acked: id }); }
-  memQueue.delete(id);
-  return json({ acked: id, tx });
+  const payload = { count: evs.length, events: evs.slice(-120) };
+  evCache = { key, at: Date.now() / 1000, data: payload };
+  return json(payload);
 }
 
 // ---- router ----
@@ -259,9 +339,8 @@ export default {
       switch (url.pathname) {
         case "/api/snapshot": return await apiSnapshot(env);
         case "/api/events":   return await apiEvents(env, url);
-        case "/api/stimulate": return req.method === "POST" ? await apiStimulate(env, req) : json({ error: "POST only" }, 405);
-        case "/api/pending":  return await apiPending(env, req);
-        case "/api/ack":      return req.method === "POST" ? await apiAck(env, req) : json({ error: "POST only" }, 405);
+        case "/api/push-snapshot": return req.method === "POST" ? await apiPushSnapshot(env, req) : json({ error: "POST only" }, 405);
+        case "/api/push-events": return req.method === "POST" ? await apiPushEvents(env, req) : json({ error: "POST only" }, 405);
         case "/api/status": {
           const s = cache.data || (await buildSnapshot(env));
           return json({ ok: true, address: s.address, tick: s.tick, totalSpikes: s.totalSpikes, cacheAgeS: Math.round(Date.now() / 1000 - cache.at) });
@@ -270,7 +349,7 @@ export default {
           return json({
             name: "WBB worker",
             worm: "the fully on-chain C. elegans brain on BSC mainnet",
-            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/stimulate (POST {idx,amp})", "/api/status"],
+            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/status"],
           });
       }
     } catch (e) {

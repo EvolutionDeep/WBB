@@ -1,0 +1,17 @@
+{
+  "name": "wbb-frontend",
+  "private": true,
+  "type": "module",
+  "description": "Read-only dashboard for the on-chain worm: reads the deployed WormReadout and SenseAdapter straight from a public BSC RPC",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "ethers": "^6.13.4"
+  },
+  "devDependencies": {
+    "vite": "^5.4.11"
+  }
+}

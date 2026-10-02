@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WormReadout — read-only lens on the on-chain worm</title>
+<style>
+  :root {
+    --cy: #35e0ff;
+    --mag: #ff4fd8;
+    --amber: #ffb454;
+    --grn: #29ff9b;
+    --red: #ff4d5e;
+    --bg: #05070d;
+    --panel: rgba(10, 18, 30, 0.72);
+    --line: rgba(53, 224, 255, 0.22);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; min-height: 100%; background: var(--bg); }
+  body {
+    font-family: "Share Tech Mono", "Cascadia Mono", Consolas, monospace;
+    color: #b8e8f6; padding: 18px; line-height: 1.5;
+    background-image: radial-gradient(1200px 600px at 80% -10%, rgba(53,224,255,0.06), transparent 60%);
+  }
+  header { max-width: 1180px; margin: 0 auto 16px; }
+  h1 { font-size: 16px; letter-spacing: 0.24em; text-transform: uppercase; color: #dff5ff; font-weight: 400; }
+  h1 b { color: var(--cy); font-weight: 400; }
+  .tagline { font-size: 11px; color: rgba(148,205,226,0.6); letter-spacing: 0.1em; margin-top: 4px; }
+
+  .grid {
+    max-width: 1180px; margin: 0 auto; display: grid; gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 4px;
+    padding: 12px 14px; backdrop-filter: blur(6px);
+    box-shadow: 0 0 22px rgba(53,224,255,0.05), inset 0 0 18px rgba(0,20,40,0.45);
+  }
+  .card h2 {
+    font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: #cdeefc;
+    font-weight: 400; border-bottom: 1px dashed rgba(53,224,255,0.18); padding-bottom: 6px; margin-bottom: 8px;
+  }
+  .card h2 .num { color: var(--cy); }
+  .row { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; padding: 2px 0; }
+  .k { color: rgba(148,205,226,0.62); letter-spacing: 0.06em; }
+  .v { color: var(--cy); text-align: right; word-break: break-all; }
+  .v.mag { color: var(--mag); }
+  .v.mono { font-size: 11px; }
+  a.v { color: var(--cy); text-decoration: none; }
+  a.v:hover { text-decoration: underline; }
+
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 11px; letter-spacing: 0.12em; }
+  .badge.live { color: var(--grn); border: 1px solid rgba(41,255,155,0.5); }
+  .badge.halt { color: var(--red); border: 1px solid rgba(255,77,94,0.55); }
+
+  canvas { display: block; background: rgba(2,6,12,0.85); border: 1px solid rgba(53,224,255,0.14); border-radius: 3px; }
+  .gauges { display: flex; gap: 10px; margin-top: 8px; font-size: 11px; }
+  .gauge { flex: 1; text-align: center; }
+  .gauge .bar { height: 6px; background: rgba(53,224,255,0.12); border-radius: 3px; position: relative; margin-top: 4px; overflow: hidden; }
+  .gauge .fill { position: absolute; top: 0; bottom: 0; background: var(--cy); }
+  .note { font-size: 10px; color: rgba(148,205,226,0.55); margin-top: 6px; letter-spacing: 0.04em; }
+
+  .list { max-height: 240px; overflow: auto; margin-top: 4px; }
+  .ev { font-size: 11px; padding: 3px 0; border-bottom: 1px dashed rgba(53,224,255,0.09); display: flex; flex-wrap: wrap; gap: 6px 10px; }
+  .ev .ty { font-weight: 400; }
+  .ev.inj .ty { color: var(--cy); }
+  .ev.stm .ty { color: var(--mag); }
+  .ev.smp .ty { color: var(--amber); }
+  .ev .cell { color: rgba(148,205,226,0.7); }
+  .ev .cell b { color: #d7f2ff; font-weight: 400; }
+  .tag { padding: 0 6px; border-radius: 2px; font-size: 10px; }
+  .tag.asel { background: rgba(53,224,255,0.14); color: var(--cy); }
+  .tag.aser { background: rgba(255,79,216,0.14); color: var(--mag); }
+  .tag.other { background: rgba(255,180,84,0.14); color: var(--amber); }
+
+  .ev-item { font-size: 11px; padding: 5px 0; border-bottom: 1px dashed rgba(53,224,255,0.1); }
+  .ev-item .lbl { color: #cdeefc; }
+  .ev-item .hash { color: rgba(148,205,226,0.7); font-size: 10px; word-break: break-all; }
+  .ev-item .desc { color: rgba(148,205,226,0.6); font-size: 10px; margin-top: 2px; }
+
+  footer {
+    max-width: 1180px; margin: 14px auto 0; display: flex; flex-wrap: wrap; gap: 8px 20px;
+    align-items: center; font-size: 11px; color: rgba(148,205,226,0.6);
+  }
+  #dot { width: 8px; height: 8px; border-radius: 50%; background: #555; display: inline-block; margin-right: 6px; }
+  #dot.ok { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
+  #dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
+  .ro { color: var(--amber); letter-spacing: 0.14em; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Worm<b>Readout</b> · read-only lens</h1>
+  <div class="tagline">
+    a permissionless on-chain C. elegans on BSC mainnet · this page only <b>reads</b> the deployed
+    WormReadout &amp; SenseAdapter — it signs nothing, runs no brain step, and never advances the animal
+  </div>
+</header>
+
+<div class="grid">
+  <!-- 1. IDENTITY -->
+  <section class="card" id="card-identity">
+    <h2><span class="num">01</span> · Identity</h2>
+    <div class="row"><span class="k">STATUS</span><span id="status-badge"><span class="badge live">CONNECTING…</span></span></div>
+    <div class="row"><span class="k">BRAIN</span><a class="v mono" id="brain-addr" target="_blank" rel="noopener">—</a></div>
+    <div class="row"><span class="k">CONN ROOT</span><span class="v mono" id="conn-root">—</span></div>
+    <div class="row"><span class="k">TICK</span><span class="v" id="tick">—</span></div>
+    <div class="row"><span class="k">STATE HASH</span><span class="v mono" id="state-hash">—</span></div>
+    <div class="row"><span class="k">LAST ADVANCE BLOCK</span><span class="v" id="last-adv-block">—</span></div>
+    <div class="row"><span class="k">CURRENT BLOCK</span><span class="v" id="cur-block">—</span></div>
+    <div class="row"><span class="k">BLOCKS SINCE ADVANCE</span><span class="v" id="since-adv">—</span></div>
+    <div class="note" id="stale-note">A reading is stale when current block − last advance block &gt; 20; the page then says HALTED instead of pretending to move.</div>
+  </section>
+
+  <!-- 2. BODY -->
+  <section class="card" id="card-body">
+    <h2><span class="num">02</span> · Body (only read() → approach / turn / speed)</h2>
+    <canvas id="body-canvas" width="440" height="300"></canvas>
+    <div class="gauges">
+      <div class="gauge"><span class="k">APPROACH</span><div class="v" id="g-approach">—</div><div class="bar"><div class="fill" id="f-approach"></div></div></div>
+      <div class="gauge"><span class="k">TURN</span><div class="v mag" id="g-turn">—</div><div class="bar"><div class="fill" id="f-turn" style="background:var(--mag)"></div></div></div>
+      <div class="gauge"><span class="k">SPEED</span><div class="v" id="g-speed" style="color:var(--amber)"><span></span></div><div class="bar"><div class="fill" id="f-speed" style="background:var(--amber)"></div></div></div>
+    </div>
+    <div class="note">x = turn (−10000 left ↔ 10000 right), y = approach (−10000 down ↔ 10000 up), size = |speed|.
+      A point is drawn only for a NEW on-chain tick — the page never fabricates a trajectory between beats.</div>
+  </section>
+
+  <!-- 3. STIMULI -->
+  <section class="card" id="card-stim">
+    <h2><span class="num">03</span> · Stimuli (inject / stimulate / sample)</h2>
+    <div class="row"><span class="k">stim(ASEL) live</span><span class="v" id="stim-asel">—</span></div>
+    <div class="row"><span class="k">stim(ASER) live</span><span class="v mag" id="stim-aser">—</span></div>
+    <div class="row"><span class="k">POOL RATIO (now, Q20)</span><span class="v" id="ratio-now">—</span></div>
+    <div class="row"><span class="k">LAST SAMPLED RATIO</span><span class="v" id="ratio-last">—</span></div>
+    <div class="row"><span class="k">Δ vs PREVIOUS BEAT</span><span class="v" id="ratio-delta">—</span></div>
+    <div class="note">Stimulation accumulates within a block; a later same-block current is ADDED, it never overwrites.</div>
+    <div class="list" id="stim-list"></div>
+  </section>
+
+  <!-- 4. EVIDENCE -->
+  <section class="card" id="card-evidence">
+    <h2><span class="num">04</span> · Evidence (recorded mainnet verifications)</h2>
+    <div id="evidence"></div>
+    <div class="note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
+  </section>
+</div>
+
+<footer>
+  <span><span id="dot"></span><span id="status-text">booting</span></span>
+  <span>RPC <span id="rpc-host" class="v mono">—</span></span>
+  <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
+  <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
+  <span class="ro">READ-ONLY · NO WALLET · NO TRANSACTIONS</span>
+</footer>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
