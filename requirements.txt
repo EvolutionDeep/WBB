@@ -1,0 +1,19 @@
+# Python dependencies for the GOOD6 / WBB on-chain worm.
+#
+# Reproducing the deterministic build (the thing that must be byte-for-byte equal
+# to the deployed contract) needs ONLY numpy:
+#     python worm/brain_spec.py
+# reads the committed worm/data/connectome_cook2019.npz and re-emits
+# brain_weights.json + brain_golden.json; it does NOT touch the network.
+#
+# cect (OpenWorm ConnectomeToolbox) is required only to RE-EXPORT the .npz from
+# the raw Cook 2019 workbook, i.e. to regenerate worm/data from scratch:
+#     pip install -e ./cect-src        # third-party, pinned local checkout (gitignored)
+#     python worm/export_connectome.py
+# It is intentionally NOT listed here so the core reproducible path stays minimal.
+
+numpy<2.4          # integer spec + connectome matrices (fixed-point Q20 build)
+
+# Resident on-chain node (worm/node/brain_daemon.py) only -- pays gas to advance():
+web3==8.0.0        # sign + send advance()/stimulate() transactions to BSC
+python-dotenv      # read contracts/.env (key never committed)

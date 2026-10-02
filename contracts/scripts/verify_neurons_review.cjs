@@ -14,13 +14,30 @@ const re = /uint256 internal constant (\w+) = (\d+);/g;
 let m;
 while ((m = re.exec(sol))) consts[m[1]] = Number(m[2]);
 
-// 2) prove the deployed genome IS this file's blob (index order comes from names[])
+// 2) the local build's genome root, and how it relates to what is deployed
 const blobRoot = ethers.keccak256(W.blob);
 const deployedRoot = rec.WormBrain.connRoot;
 console.log("deployed WormBrain address :", rec.WormBrain.address, "(v" + rec.WormBrain.version + ")");
-console.log("keccak256(brain_weights)   :", blobRoot);
-console.log("recorded on-chain connRoot :", deployedRoot);
-console.log("connRoot MATCH             :", blobRoot === deployedRoot);
+console.log("keccak256(local blob)      :", blobRoot, "  <- corrected-direction table");
+console.log("recorded on-chain connRoot :", deployedRoot, "  <- pre-fix (reversed) table");
+console.log("local == deployed          :", blobRoot === deployedRoot,
+  "(expected false until a corrected redeploy; NOT a gate)");
+
+// 2b) direction guard: the packed src->dst must follow the raw table's pre->post,
+// not its reverse. This is what the Python<->Solidity golden test cannot catch.
+const edgeRows = fs.readFileSync(path.join(__dirname, "..", "..", "worm", "data", "edge_list.csv"), "utf8")
+  .split(/\r?\n/).filter(Boolean).slice(1)
+  .map((l) => l.split(","));
+const chemDir = new Set();
+for (const r of edgeRows) if (r[3] === "chemical") chemDir.add(r[0] + ">" + r[1]);
+const uni = [...chemDir].filter((e) => { const [a, b] = e.split(">"); return !chemDir.has(b + ">" + a); });
+const packed = new Set(W.src.map((s, k) => s + ">" + W.dst[k]));
+const ni = {};
+W.names.forEach((n, i) => (ni[n] = i));
+let correct = 0, reversed = 0;
+for (const e of uni) { const [a, b] = e.split(">"); if (packed.has(ni[a] + ">" + ni[b])) correct++; if (packed.has(ni[b] + ">" + ni[a])) reversed++; }
+const directionOk = uni.length === 0 || correct > reversed;
+console.log("\n[direction] unidirectional chem edges=" + uni.length, "correct(pre->post)=" + correct, "reversed=" + reversed, "=>", directionOk ? "OK" : "REVERSED");
 
 // 3) the seed-time list must be Cook 2019 hermaprodite, 302 unique, sorted
 const names = W.names;
@@ -30,7 +47,7 @@ console.log("names length / unique / sorted:", names.length, "/", uniq, "/", sor
 
 // 4) per-neuron cross-check
 const review = ["ASEL","ASER","AWCL","AWCR","AWAL","AWAR","AVAL","AVAR","AVBL","AVBR","PVCL","PVCR"];
-let ok = blobRoot === deployedRoot && names.length === 302 && uniq === 302 && sorted;
+let ok = names.length === 302 && uniq === 302 && sorted && directionOk;
 console.log("\nname  | solIdx | names[solIdx] | indexOf(name) | verdict");
 for (const n of review) {
   const solIdx = consts[n];
@@ -40,5 +57,5 @@ for (const n of review) {
   if (!pass) ok = false;
   console.log(`${n.padEnd(5)} | ${String(solIdx).padStart(6)} | ${String(nameAtSolIdx).padStart(13)} | ${String(genomeIdx).padStart(13)} | ${pass ? "OK" : "MISMATCH"}`);
 }
-console.log("\nRESULT:", ok ? "PASS - all indices match the seed-time Cook 2019 list" : "FAIL - stop, do not deploy");
+console.log("\nRESULT:", ok ? "PASS - genome well-formed, indices correct, synapse direction pre->post" : "FAIL - stop, do not deploy");
 process.exitCode = ok ? 0 : 1;

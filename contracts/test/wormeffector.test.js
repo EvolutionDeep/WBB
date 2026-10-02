@@ -55,4 +55,28 @@ describe("WormEffectorDemo -- brain and business stay separate contracts", funct
     // the effector neither stimulated nor advanced: the animal's state is untouched
     expect(await brain.stateHash()).to.equal(before);
   });
+
+  it("flags STALE once tick stops advancing (read-time blockNumber is not a liveness clock)", async function () {
+    await (await effector.act()).wait();                       // records the advance block (tick moved in beforeEach)
+    expect((await effector.lastAction()).fresh).to.equal(true);
+
+    await ethers.provider.send("hardhat_mine", ["0x67"]);      // 103 blocks with NO advance
+
+    // the read-time blockNumber still equals the current height => the old formula would wrongly say "fresh"
+    const r = await readout.read.staticCall();
+    const cur = await ethers.provider.getBlockNumber();
+    expect(BigInt(cur) - BigInt(r.blockNumber)).to.equal(0n);
+
+    // the corrected effector sees tick frozen and marks the reading stale
+    await (await effector.act()).wait();
+    const a = await effector.lastAction();
+    expect(a.fresh).to.equal(false);
+    expect(a.tick).to.equal(6);                                 // unchanged: the animal is dormant
+
+    // waking the animal (advance) makes a subsequent read fresh again
+    await (await brain.advance(1, W.blob, ADV_GAS)).wait();
+    await (await effector.act()).wait();
+    expect((await effector.lastAction()).fresh).to.equal(true);
+    expect((await effector.lastAction()).tick).to.equal(7);
+  });
 });

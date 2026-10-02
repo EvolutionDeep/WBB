@@ -11,7 +11,7 @@ const RPC = pick("ALCHEMY_BSC_RPC") || pick("BSC_RPC_URL") || "https://bsc-datas
 console.log("using RPC:", RPC.replace(/[^/]+$/, "***"));
 
 const env = {
-  BRAIN_ADDRESS: "0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B",
+  BRAIN_ADDRESS: "0x18174bb0049d43fA75f468a037dfC32899f01dBB",
   BSC_RPC: RPC,
 };
 
@@ -23,9 +23,11 @@ const call = async (path, init) => {
 
 let r = await call("/api/snapshot");
 console.log("snapshot:", r.status, "tick=", r.body.tick, "totalSpikes=", r.body.totalSpikes,
+  "readBlock=", r.body.readBlock,
   "V.len=", r.body.V.length, "V[0]=", r.body.V[0], "spikes[0..3]=", r.body.spikes.slice(0, 4),
   "px=", r.body.px, "hx=", r.body.hx, "stateHash=", String(r.body.stateHash).slice(0, 18));
 if (r.body.V.length !== 302) throw new Error("V array wrong");
+if (!Number.isInteger(r.body.readBlock)) throw new Error("snapshot not pinned to a block");
 
 r = await call("/api/events?blocks=1500");
 console.log("events:", r.status, JSON.stringify(r.body).slice(0, 300));

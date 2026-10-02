@@ -73,12 +73,41 @@ const json = (obj, status = 200) =>
   });
 
 function toSigned(hexWord) {
-  // 32-byte big-endian hex -> JS number, decoding int256 two's complement.
-  let v = BigInt(hexWord);
+  // Accept a word with OR without the 0x prefix. A raw 64-hex slice (an event data
+  // word split out below) has NO prefix, and BigInt() would then read it as DECIMAL
+  // -- wrong for all-digits, SyntaxError on any a-f (e.g. a fired count of 26 = ..1a)
+  // that crashed /api/events with a 502. Normalize to hex, then decode int256.
+  const hex = typeof hexWord === "string" && !hexWord.startsWith("0x") ? "0x" + hexWord : hexWord;
+  let v = BigInt(hex);
   const MOD = 1n << 256n;
   if (v >= 1n << 255n) v -= MOD;
   const f = Number(v);
   return f; // values are Q20 and far below 2^53, safe as double
+}
+
+// Decode raw eth_getLogs entries into the API's event shape. Exported so the
+// hex-parsing (the historical fired=26 -> 502 crash) is unit-testable in isolation.
+export function decodeLogs(logs) {
+  return logs.map((lg) => {
+    const t = lg.topics[0];
+    if (t === EV.Stimulated) {
+      return {
+        kind: "Stimulated",
+        block: parseInt(lg.blockNumber, 16),
+        tx: lg.transactionHash,
+        idx: toSigned(lg.topics[1]),
+        amp: toSigned(lg.data),
+      };
+    }
+    return {
+      kind: "Advanced",
+      block: parseInt(lg.blockNumber, 16),
+      tx: lg.transactionHash,
+      tick: toSigned(lg.topics[1]),
+      fired: toSigned(lg.data.slice(2, 66)),       // raw 64-hex word (no 0x) -> toSigned adds it
+      totalSpikes: toSigned(lg.data.slice(66, 130)),
+    };
+  });
 }
 
 async function rpc(env, method, params) {
@@ -120,8 +149,9 @@ async function poolMap(items, conc, fn) {
   return out;
 }
 
-async function rpcBatch(env, calls) {
-  // calls: [{to,data}] -> array of hex results, order preserved.
+async function rpcBatch(env, calls, blockTag = "latest") {
+  // calls: [{to,data}] -> array of hex results, order preserved, all read at the
+  // SAME blockTag so an aggregated snapshot is internally consistent (see #4).
   // Batch JSON-RPC is only attempted against configured PRIVATE endpoints
   // (public dataseeds cap batches at 100 and rate-limit batched eth_call);
   // the public path is concurrent single eth_calls rotated over endpoints.
@@ -135,7 +165,7 @@ async function rpcBatch(env, calls) {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(chunk.map((c, i) => ({
-            jsonrpc: "2.0", id: i + 1, method: "eth_call", params: [{ to: c.to, data: c.data }, "latest"],
+            jsonrpc: "2.0", id: i + 1, method: "eth_call", params: [{ to: c.to, data: c.data }, blockTag],
           }))),
           signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
@@ -151,7 +181,7 @@ async function rpcBatch(env, calls) {
       // private endpoint down/limited: fall through to the public pool
     }
   }
-  return poolMap(calls, 16, (c) => rpc(env, "eth_call", [{ to: c.to, data: c.data }, "latest"]));
+  return poolMap(calls, 16, (c) => rpc(env, "eth_call", [{ to: c.to, data: c.data }, blockTag]));
 }
 
 const word = (sel, idx) => sel + BigInt.asUintN(256, BigInt(idx)).toString(16).padStart(64, "0");
@@ -169,14 +199,18 @@ let pushCache = { at: 0, data: null };
 
 async function buildSnapshot(env) {
   const addr = env.BRAIN_ADDRESS || "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
+  // pin every getter to ONE block so V/gate/stim/M/spikes and stateHash all
+  // describe the same on-chain state; without this a beat landing mid-rebuild
+  // would splice two blocks together and the arrays would not match stateHash.
+  const blockTag = await rpc(env, "eth_blockNumber", []);
   const scalars = ["tick", "totalSpikes", "px", "py", "hx", "hy", "connRoot", "edgeCount", "stateHash"];
   const calls = [];
   for (const s of scalars) calls.push({ to: addr, data: SEL[s] });
   const ARRAYS = [["V", SEL.V], ["gate", SEL.gate], ["stim", SEL.stim], ["M", SEL.M], ["spikeCount", SEL.spikeCount]];
   for (const [, sel] of ARRAYS) for (let i = 0; i < N_NEURONS; i++) calls.push({ to: addr, data: word(sel, i) });
 
-  // one logical read of 1519 getters; rpcBatch pools it over public endpoints
-  const results = await rpcBatch(env, calls);
+  // one logical read of 1519 getters, all at blockTag; rpcBatch pools it over endpoints
+  const results = await rpcBatch(env, calls, blockTag);
 
   const out = {};
   scalars.forEach((s, i) => {
@@ -191,6 +225,7 @@ async function buildSnapshot(env) {
     p += N_NEURONS;
   }
   out.q = 1048576; // SCALE, Q20 fixed point of the spec
+  out.readBlock = Number(BigInt(blockTag)); // block every value above was read at
   out.address = addr;
   return out;
 }
@@ -297,26 +332,7 @@ async function apiEvents(env, url) {
     }
   }
   if (!logs) throw lastErr;
-  const evs = logs.map((lg) => {
-    const t = lg.topics[0];
-    if (t === EV.Stimulated) {
-      return {
-        kind: "Stimulated",
-        block: parseInt(lg.blockNumber, 16),
-        tx: lg.transactionHash,
-        idx: toSigned(lg.topics[1]),
-        amp: toSigned(lg.data),
-      };
-    }
-    return {
-      kind: "Advanced",
-      block: parseInt(lg.blockNumber, 16),
-      tx: lg.transactionHash,
-      tick: toSigned(lg.topics[1]),
-      fired: toSigned(lg.data.slice(2, 66)),
-      totalSpikes: toSigned(lg.data.slice(66, 130)),
-    };
-  });
+  const evs = decodeLogs(logs);
   const payload = { count: evs.length, events: evs.slice(-120) };
   evCache = { key, at: Date.now() / 1000, data: payload };
   return json(payload);

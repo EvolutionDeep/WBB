@@ -19,11 +19,14 @@ import {WormNeurons} from "./WormNeurons.sol";
 ///        No group means, no scan of the 32 motor neurons, no touch of the mainnet
 ///        world-line. The worm keeps living on its own; this contract only observes.
 ///
-///        STALENESS (part of the contract): the animal steps forward continuously,
-///        so a reading has a shelf life. A consumer MUST discard a Readout when
-///        block.number - Readout.blockNumber > 20 blocks; older than that, it no
-///        longer describes what the worm is doing now. stateHash() ties the reading
-///        to the exact on-chain state it was derived from, so it is verifiable.
+///        STALENESS: read().blockNumber is the chain height AT READ TIME -- it is
+///        provenance, NOT a liveness clock. Because it is captured in the same call
+///        it is returned in, `block.number - blockNumber` is always ~0 and can never
+///        tell you how long the animal has been idle. The animal only changes state
+///        on advance(); to detect a stalled one a consumer must watch `tick` (or the
+///        Advanced event block) FAIL to change for more than STALE_WINDOW blocks, or
+///        scan the chain for the last Advanced log. stateHash() ties a reading to
+///        the exact on-chain state it came from, so it is verifiable.
 contract WormReadout {
     IWormBrain public immutable brain;
 
@@ -32,7 +35,7 @@ contract WormReadout {
         int16 turn;         // left minus right head turning
         int16 speed;        // forward (AVB) minus backward (AVA) drive
         uint64 tick;        // the worm's step counter at read time
-        uint64 blockNumber; // chain height at read time -- the staleness anchor
+        uint64 blockNumber; // chain height at read time -- provenance only, NOT a staleness clock
         bytes32 stateHash;  // brain.stateHash() at read time -- provable provenance
     }
 

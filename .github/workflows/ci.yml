@@ -1,0 +1,56 @@
+name: ci
+
+# What this proves, in order:
+#   1. The deterministic build is reproducible: re-running the integer spec on a
+#      clean checkout regenerates worm/data BYTE-FOR-BYTE (git diff --exit-code),
+#      and its built-in guard asserts synapse direction is pre->post, not reversed.
+#   2. The Solidity contract reproduces that spec: full Hardhat suite, including
+#      the on-chain stateHash == Python golden trajectory assertion.
+#   3. The worker event decoder handles real log words offline (the historical
+#      fired=26 -> 502 crash is pinned by a unit test).
+#   4. The frontend builds and is provably read-only (no signing/tx path).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install minimal Python deps (numpy only)
+        run: pip install "numpy<2.4"
+
+      - name: Regenerate deterministic build and prove committed data matches source
+        run: |
+          python worm/brain_spec.py
+          git diff --exit-code worm/data || {
+            echo "::error::committed worm/data is NOT reproducible from the spec"; exit 1;
+          }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Contracts - compile and full test suite
+        working-directory: contracts
+        run: |
+          npm ci
+          npx hardhat compile
+          npx hardhat test
+
+      - name: Worker - event decoder unit test (offline, no RPC)
+        run: node worker/test_events.mjs
+
+      - name: Frontend - build and read-only smoke test
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          npm test

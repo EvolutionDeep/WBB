@@ -126,6 +126,7 @@ def tdiv(a, b):
 # ---------------- Load connectome and quantize into sparse integer weights ----------------
 d = np.load(DATA / "connectome_cook2019.npz", allow_pickle=True)
 names = [str(n) for n in d["neurons"]]
+# The exporter stores W_[pre, post] (row = presynaptic, col = postsynaptic).
 W_chem, W_elec = d["W_chem"].astype(float), d["W_elec"].astype(float)
 N = len(names)
 idx = {n: i for i, n in enumerate(names)}
@@ -136,17 +137,20 @@ for i, n in enumerate(names):
     if GABAERGIC.match(n):
         sign_chem[i] = -1.0
 
-Smat = W_chem * sign_chem[:, None] + W_elec          # S[j,i]: net connection i->j
-row_abs = np.abs(Smat).sum(axis=1, keepdims=True)
-Smat = Smat / np.maximum(row_abs, 1e-6)              # row-normalize (sum of |in-weights| per post = 1)
+# Transpose to Smat[post, pre] so Smat[j, i] is the signed weight of the real
+# pre -> post synapse (row = postsynaptic receiver, col = presynaptic source).
+# The chemical sign (GABAergic) belongs to the PRESYNAPTIC neuron = the column.
+Smat = W_chem.T * sign_chem[None, :] + W_elec.T           # Smat[post, pre]: net connection pre->post
+row_abs = np.abs(Smat).sum(axis=1, keepdims=True)         # per-POST sum of |in-weights|
+Smat = Smat / np.maximum(row_abs, 1e-6)                   # row-normalize (each post's in-weights sum |w|=1)
 
-# sparsify: wq = round(Smat[j,i]*SCALE), keep nonzero in-edges (src=i, dst=j)
+# sparsify: wq = round(Smat[post,pre]*SCALE), keep nonzero in-edges (src=pre, dst=post)
 SRC, DST, WQ = [], [], []
-for j in range(N):
-    for i in range(N):
+for j in range(N):            # j = postsynaptic (row)
+    for i in range(N):        # i = presynaptic (col)
         wq = int(round(Smat[j, i] * S))
         if wq != 0:
-            SRC.append(i); DST.append(j); WQ.append(wq)
+            SRC.append(i); DST.append(j); WQ.append(wq)    # edge src=pre -> dst=post
 E = len(SRC)
 
 def grp(pat):
@@ -412,7 +416,25 @@ def dump_weights():
     return out
 
 
+def check_direction():
+    """Guard against the historical transpose bug: the packed (src,dst) triples must
+    follow the raw connectome table's pre->post orientation, not its reverse. The
+    Python<->Solidity golden test cannot catch a shared reversal, so we assert here."""
+    import csv
+    packed = set(zip(SRC, DST))
+    rows = list(csv.DictReader((DATA / "edge_list.csv").open(encoding="utf-8")))
+    chem = {(r["pre"], r["post"]) for r in rows if r["syn_type"] == "chemical"}
+    uni = [(p, q) for (p, q) in chem if (q, p) not in chem]          # truly unidirectional chem edges
+    correct = sum(1 for p, q in uni if (idx[p], idx[q]) in packed)   # pre->post present
+    reversed_ = sum(1 for p, q in uni if (idx[q], idx[p]) in packed)  # post->pre present
+    print(f"[direction] unidirectional chem edges={len(uni)} correct(pre->post)={correct} reversed={reversed_}")
+    assert len(uni) == 0 or correct > reversed_, f"orientation looks reversed (correct={correct} reversed={reversed_})"
+    assert len(uni) == 0 or correct >= 0.99 * len(uni), "orientation sanity failed"
+    return correct, reversed_
+
+
 def main():
+    check_direction()
     w = dump_weights()
     print(f"neurons={N} edges={E}")
     AVAR = idx.get("AVAR", INTER_AVA[0] if INTER_AVA else 0)
