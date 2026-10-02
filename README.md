@@ -91,12 +91,12 @@ bytes came from this Solidity. Two things close that:
   byte-identical solc **metadata** fingerprint and **0 real code differences**,
   the only deltas being the two inlined `deployer` immutable slots (the
   constructor's `msg.sender`) — i.e. the deployed executable code is this source.
-- That check is self-attesting. What makes it third-party visible is **publishing
-  the source on BscScan**, still an open task here: it needs `BSCSCAN_API_KEY`,
-  then
-  `npx hardhat verify --network bscMainnet 0x18174bb0049d43fA75f468a037dfC32899f01dBB`.
-  Until that is done, read this repo as "verifiable by anyone who compiles it",
-  not as "independently verified on an explorer".
+- That check is self-attesting. The third-party-visible step — **publishing the
+  source on BscScan** — is now **done**: `WormBrainV2` is verified on BscScan
+  (`npx hardhat verify --network bscMainnet 0x18174bb0049d43fA75f468a037dfC32899f01dBB`,
+  2026-10-02), so anyone can compare the published source against the deployed
+  bytecode on the explorer without compiling anything:
+  https://bscscan.com/address/0x18174bb0049d43fA75f468a037dfC32899f01dBB#code
 
 **Reproducibility today is self-service, not third-party.** Anyone can rerun
 `python worm/brain_spec.py` (golden integer trajectory),
