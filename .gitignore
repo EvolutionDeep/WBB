@@ -33,3 +33,6 @@ worm/node/beat_payload.json
 .vscode/
 .DS_Store
 Thumbs.db
+
+# runtime life archive output (regenerable from chain with archive_life.py)
+worm/node/life_log.csv

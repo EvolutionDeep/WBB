@@ -174,6 +174,7 @@ export async function createWormViz({ container, getTarget }) {
     gates: {},
     tick: null,
     tickAt: 0,
+    tickGap: 0,  // learned heartbeat cadence: EMA of observed tick intervals (ms)
     connRoot: null,
     error: null,
     busy: false,
@@ -361,7 +362,16 @@ export async function createWormViz({ container, getTarget }) {
       // the last gates forever. A single transient read failure must not freeze an
       // animal whose tick was demonstrably moving seconds ago, so liveness is the
       // freshness window alone; the error line below still reports the failure.
-      if (prevTick === null || st.tick !== prevTick) st.tickAt = Date.now();
+      if (prevTick === null || st.tick !== prevTick) {
+        const now = Date.now();
+        if (prevTick !== null && st.tickAt) {
+          const gap = now - st.tickAt;
+          // EMA: a slow node (adaptive cadence) widens the freshness window, a
+          // stalled one still freezes once 3 learned heartbeats go by
+          st.tickGap = st.tickGap ? Math.round(0.3 * gap + 0.7 * st.tickGap) : gap;
+        }
+        st.tickAt = now;
+      }
 
       // a spike is a real event: spikeCount only ever grows, so any increase fired
       // within the observed window and lights up that neuron
@@ -391,7 +401,10 @@ export async function createWormViz({ container, getTarget }) {
     const rev = (gt[IDX.AVAL] || 0) + (gt[IDX.AVAR] || 0);
     const turn = (gt[IDX.AWCL] || 0) + (gt[IDX.AWCR] || 0) - (gt[IDX.AWAL] || 0) - (gt[IDX.AWAR] || 0);
     const net = fwd - rev;
-    const alive = st.tick !== null && Date.now() - st.tickAt < 90000;
+    // alive = tick fresh within 3 learned heartbeats, floored at 90s so a fast
+    // cadence never makes the viewer twitchy and a slow one never fakes a stop
+    const aliveWindow = Math.max(90000, 3 * (st.tickGap || 0));
+    const alive = st.tick !== null && Date.now() - st.tickAt < aliveWindow;
     if (!alive) return { amp: 0, dir: 0, bend: 0, alive: false };
     const amp = Math.min(0.5, Math.abs(net) * AMP_GAIN);
     return { amp, dir: net >= 0 ? 1 : -1, bend: Math.max(-0.6, Math.min(0.6, turn * 0.15)), alive: true };
@@ -422,13 +435,16 @@ export async function createWormViz({ container, getTarget }) {
   function hud(m) {
     const tickTxt = st.tick === null ? "—" : String(st.tick);
     const rootTxt = st.connRoot ? st.connRoot.slice(0, 12) + "…" : "—";
+    const ageS = st.tickAt ? Math.round((Date.now() - st.tickAt) / 1000) : null;
+    const cadS = st.tickGap ? Math.round(st.tickGap / 1000) : null;
+    const paceTxt = ageS === null ? "" : ` · last advance ${ageS}s ago${cadS ? ` (heartbeat ~${cadS}s)` : ""}`;
     hudEl.innerHTML =
       `<div class="viz-line"><b>tick</b> ${tickTxt} · <b>connRoot</b> ${rootTxt}</div>` +
       `<div class="viz-line"><b>wave amp</b> ${ampShown.toFixed(3)} · <b>dir</b> ${m.dir > 0 ? "forward (AVB)" : m.dir < 0 ? "reverse (AVA)" : "—"} · <b>turn</b> ${bendShown.toFixed(2)}</div>` +
       `<div class="viz-line">display gains: wave = |AVB-AVA| gate x${AMP_GAIN} · node brightness = (V in [-V_THRESH,+V_THRESH])^2</div>` +
       (m.alive
-        ? `<div class="viz-line ok">LIVE · motor gates read from chain, wave is their function</div>`
-        : `<div class="viz-line halt">HALTED · no advance recently: the body is frozen, not animated</div>`) +
+        ? `<div class="viz-line ok">LIVE${paceTxt} · motor gates read from chain, wave is their function</div>`
+        : `<div class="viz-line halt">HALTED${paceTxt}: the body is frozen, not animated</div>`) +
       (st.error ? `<div class="viz-line err">chain read failed: ${st.error}</div>` : "") +
       (st.probed && !st.error
         ? `<div class="viz-line">batch endpoint ${new URL(st.probed).host} · ${nN * 2 + GATE_IDX.length + 2} eth_call/poll</div>`

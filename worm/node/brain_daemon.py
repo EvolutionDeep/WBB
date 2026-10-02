@@ -16,6 +16,9 @@ Usage:
   python worm/node/brain_daemon.py --beats 3                    # demo a few beats
   python worm/node/brain_daemon.py --continuous --interval 60   # 7x24 resident
   optional: --steps 1 --reserve-bnb 0.01 --max-spend-bnb 0.5
+  --adaptive stretches the beat interval as the wallet drains so the remaining
+  steps are spread over --survive-hours (the heart slows down, it does not stop
+  dead); --max-interval caps how slow a beat may become.
   --api https://wbb-worker.<subdomain>.workers.dev pushes the freshly read
   on-chain state + this node's own event logs to the Cloudflare Worker each
   beat (needs DAEMON_KEY in .env or --api-key), so the frontend poll path costs
@@ -193,6 +196,9 @@ def main():
     ap.add_argument("--max-spend-bnb", type=float, default=0.5, help="cumulative gas budget for this run")
     ap.add_argument("--api", default=None, help="WBB worker base URL; pushes state + events each beat (read-only feed)")
     ap.add_argument("--api-key", default=None, help="daemon shared secret (falls back to DAEMON_KEY from .env)")
+    ap.add_argument("--adaptive", action="store_true", help="stretch the interval as the balance drains")
+    ap.add_argument("--survive-hours", type=float, default=12.0, help="spread remaining steps over this many hours")
+    ap.add_argument("--max-interval", type=float, default=300.0, help="upper bound for the stretched interval (seconds)")
     args = ap.parse_args()
 
     if not (1 <= args.steps <= 8):
@@ -226,6 +232,8 @@ def main():
 
     start_balance = w3.eth.get_balance(acct.address)
     spent = 0
+    # moving average of the real cost per beat, seeded with the measured V2 step
+    cost_wei = 9_450_000 * w3.eth.gas_price
     print(f"node {acct.address} | brain {brain_addr} | tick={brain.functions.tick().call()} "
           f"| balance={Web3.from_wei(start_balance, 'ether')} BNB")
     push_snapshot(args, brain, w3, "startup")
@@ -260,6 +268,9 @@ def main():
             harvest_events(rcpt)
 
             spent += rcpt["gasUsed"] * w3.eth.gas_price
+            # exponential moving average of actual per-beat cost (gas + calldata)
+            this_cost = rcpt["gasUsed"] * w3.eth.gas_price
+            cost_wei = this_cost if cost_wei == 0 else int(0.3 * this_cost + 0.7 * cost_wei)
             consecutive_fail = 0
             beats += 1
             tick_after = brain.functions.tick().call()
@@ -287,7 +298,21 @@ def main():
                 sys.exit(2)
 
         if args.continuous or beats < args.beats:
-            time.sleep(max(0.0, args.interval - (time.time() - t0)))
+            wait = args.interval
+            if args.adaptive:
+                # stretch the cadence so the steps left in the wallet are spread
+                # over --survive-hours: a slowing heartbeat, never a fake one
+                bal_now = w3.eth.get_balance(acct.address)
+                free = max(0, bal_now - Web3.to_wei(args.reserve_bnb, "ether"))
+                steps_left = free // max(1, cost_wei)
+                if steps_left > 0:
+                    need = args.survive_hours * 3600.0 / steps_left
+                    wait = min(args.max_interval, max(args.interval, need))
+                else:
+                    wait = args.max_interval
+                if abs(wait - args.interval) > 1:
+                    print(f"[pace] {wait:.0f}s/beat (≈{steps_left} steps left, target {args.survive_hours:.0f}h)")
+            time.sleep(max(0.0, wait - (time.time() - t0)))
 
     print(f"\ndone: {beats} beats, tick now at {brain.functions.tick().call()}, "
           f"spent ~{Web3.from_wei(spent, 'ether')} BNB on gas")
