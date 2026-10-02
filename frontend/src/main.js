@@ -411,11 +411,32 @@ function wirePoke() {
   }, { once: true });
 }
 
+// Time-lapse of the recorded on-chain past: a static JSON asset and a canvas
+// player, loaded only on click. Zero RPC, zero writes — a recording, not a
+// live view; the live state stays on the read-only polling above.
+function wireReplay() {
+  const b = el("replay-load");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const m = await import("./replay.js");
+      await m.start(el("replay-stage"));
+      b.textContent = "RECORDING LOADED";
+    } catch (e) {
+      b.disabled = false;
+      const s = el("replay-status");
+      if (s) s.textContent = "recording failed to load: " + ((e && e.message) || e);
+    }
+  }, { once: true });
+}
+
 async function boot() {
   el("rpc-host").textContent = new URL(RPC_SEEDS[0]).host;
   renderEvidence();
   wireViz();
   wirePoke();
+  wireReplay();
   await poll();
   setInterval(poll, POLL_MS);
 }

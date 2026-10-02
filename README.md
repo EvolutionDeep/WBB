@@ -374,6 +374,23 @@ adapter as the only address in the file, no key material, lazy import only.
 Since the brain is passive, a poke queues current and takes effect on the next
 `advance` — the UI states this instead of pretending instant motion.
 
+### Time-lapse (recorded on-chain past)
+
+`scripts/gen_replay_data.mjs` rebuilds the worm's entire history as video
+material: for every `Advanced` heartbeat in `life_log.csv` it reads the brain's
+state **at that event block** (302 membrane voltages + body pose, 306 batched
+reads per frame, quantized int8/int16) into `frontend/public/data/replay.json`.
+The dashboard's time-lapse card plays that recording through a canvas
+(`src/replay.js`, lazily imported on click, zero RPC — it is a static asset,
+not a live view). Nothing is simulated or interpolated; the silhouette is a
+schematic of the four recorded pose scalars and the HUD names the exact tick,
+block and timestamp of every frame. Cost guards are built in: runs are
+incremental (existing frames are never refetched) and the metered archive
+endpoint requires an explicit `--allow-metered` opt-in that prints the
+estimated compute-unit cost up front. The smoke test asserts the recording is
+contiguous from tick 1, correctly sized per frame, and that the player never
+touches the network beyond its own JSON asset.
+
 ## Determinism
 
 `worm/brain_spec.py` is the authoritative integer spec (MIT license, Q20 fixed
@@ -403,10 +420,12 @@ the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
 RPC — no worker in the data path, no second brain in the browser. By default
 nothing is signed or sent; the only exception is the explicitly opt-in poke
 module (`### Poke the worm`), which relays a single pinned call to the
-visitor's own wallet. The optional Three.js 3D viewer only reads view getters.
-`npm test` runs a static read-only guardrail covering every module plus a
-dedicated fence around the poke path; `npm run build` emits `dist/` including
-the embeddable badge.
+visitor's own wallet. The optional Three.js 3D viewer only reads view getters,
+and the time-lapse card (`### Time-lapse`) plays a static recording of
+replayed on-chain state. `npm test` runs a static read-only guardrail covering
+every module plus a dedicated fence around the poke path and an integrity
+check on the replay recording; `npm run build` emits `dist/` including the
+embeddable badge and `data/replay.json`.
 
 ```powershell
 cd frontend; npm install; npm run dev; npm test

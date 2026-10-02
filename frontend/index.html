@@ -217,9 +217,25 @@
     <div class="list" id="poke-feed"></div>
   </section>
 
+  <!-- 3c. TIME-LAPSE (recorded on-chain past, static data, zero RPC) -->
+  <section class="card" id="card-replay">
+    <h2><span class="num">06</span> · Time-lapse (the worm's recorded past)</h2>
+    <div class="viz-bar" id="replay-bar">
+      <button id="replay-load" type="button">LOAD RECORDING</button>
+    </div>
+    <div class="row"><span class="k">REPLAY</span><span id="replay-status" class="note">not loaded — ~0.4 MB of replayed on-chain frames, fetched only on click</span></div>
+    <div id="replay-stage" class="viz-wrap"></div>
+    <div class="note">
+      Every frame is a historical eth_call replay of the brain's real state at that heartbeat's
+      block — 302 membrane voltages plus body pose, nothing simulated or interpolated. The
+      undulating silhouette is a schematic of the four recorded pose scalars, not a shape fit.
+      Regenerate incrementally with scripts/gen_replay_data.mjs.
+    </div>
+  </section>
+
   <!-- 4. EVIDENCE -->
   <section class="card" id="card-evidence">
-    <h2><span class="num">05</span> · Evidence (recorded mainnet verifications)</h2>
+    <h2><span class="num">07</span> · Evidence (recorded mainnet verifications)</h2>
     <div id="evidence"></div>
     <div class="note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
   </section>

@@ -56,6 +56,23 @@ for (const bad of ["sendTransaction", "getSigner", "window.ethereum", "privateke
   absent(badge, bad, `badge.html stays read-only: ${bad}`);
 }
 
+// --- time-lapse: the player is a static-asset recording (src/replay.js is
+// already inside the global read-only src guard); assert the recording itself
+// is complete, quantized as documented, and wired into the page.
+const replayHtml = readFileSync(join(root, "index.html"), "utf8");
+has(replayHtml.includes("card-replay"), "time-lapse card present on the dashboard");
+const replay = JSON.parse(readFileSync(join(root, "public", "data", "replay.json"), "utf8"));
+has(replay.frames.length === replay.meta.frames, "replay frame count matches its own meta");
+has(replay.frames.every((f, i) => f.t === i + 1), "replay ticks are contiguous from 1");
+has(replay.frames.every((f) => f.v.length === 604 && f.pose.length === 16), "replay frames carry 302 int8 voltages + 4 int16 pose words");
+const rp = readFileSync(join(root, "src", "replay.js"), "utf8");
+has(rp.includes('"/data/replay.json"'), "player reads the static recording, not an RPC");
+for (const bad of ["fetch(", "eth_call", "JsonRpcProvider", "Contract("]) {
+  // exactly one fetch is allowed: the static JSON asset itself
+  const count = rp.split(bad).length - 1;
+  has(bad !== "fetch(" ? count === 0 : count === 1, `player stays off the network beyond the asset (${bad}: ${count})`);
+}
+
 // --- 3D viewer specifics: it may only READ view getters, and its data must be the
 // corrected connectome (5144 directed edges over 302 neurons).
 const viz = readFileSync(join(root, "src", "worm3d.js"), "utf8");
