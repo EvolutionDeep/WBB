@@ -74,16 +74,20 @@ def rpc(method, params, rpc_list=None, retries=2):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default=str(HERE / "life_log.csv"))
+    ap.add_argument("--use-metered", action="store_true",
+                    help="prepend the metered ALCHEMY_BSC_RPC to the gateway list (spends compute units)")
     args = ap.parse_args()
 
     rec = json.loads(ADDRESSES.read_text(encoding="utf-8"))
     brain = rec["WormBrain"]["address"]
     start = int(rec["WormBrain"]["blockNumber"])
-    # a private Alchemy endpoint (if configured) sees archive history that
-    # public gateways refuse; its URL contains a key, so it is never printed
+    # free public gateways carry the scan; a metered archive endpoint is used
+    # only when the operator knowingly opts in with --use-metered (eth_getLogs
+    # costs compute units per call and free tiers have hard monthly budgets)
     load_dotenv(ROOT / "contracts" / ".env")
-    alchemy = os.environ.get("ALCHEMY_BSC_RPC")
-    rpc_list = ([alchemy] if alchemy else []) + RPC_LIST
+    rpc_list = list(RPC_LIST)
+    if args.use_metered and os.environ.get("ALCHEMY_BSC_RPC"):
+        rpc_list = [os.environ["ALCHEMY_BSC_RPC"]] + rpc_list
     head = int(rpc("eth_blockNumber", []), 16)
 
     def scan(frm, to, out, gaps):

@@ -48,15 +48,15 @@ const kv = makeKV();
 const env = {
   BRAIN_ADDRESS: "0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B",
   WBB_STORE: kv,
-  // Metered private endpoints are only ever LAST-resort failover inside the
-  // worker (public dataseeds carry the poll load); set BSC_RPC=public to drop
-  // the private endpoint entirely.
+  // Metered private endpoints are NEVER the default: free dataseeds carry the
+  // poll load. Opt in explicitly with BSC_RPC=<url> or BSC_RPC=alchemy when
+  // you knowingly want the metered gateway (compute-unit budgets are real).
   BSC_RPC:
-    process.env.BSC_RPC && process.env.BSC_RPC !== "public"
-      ? process.env.BSC_RPC
-      : process.env.BSC_RPC === "public"
-        ? ""
-        : dotenv.ALCHEMY_BSC_RPC || "",
+    process.env.BSC_RPC === "public"
+      ? ""
+      : process.env.BSC_RPC === "alchemy"
+        ? dotenv.ALCHEMY_BSC_RPC || ""
+        : process.env.BSC_RPC || "",
   DAEMON_KEY: process.env.DAEMON_KEY || dotenv.DAEMON_KEY || "",
 };
 
