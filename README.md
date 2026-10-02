@@ -1,19 +1,24 @@
-# WormBrain — a living C. elegans on BNB Chain
+# WormBrain — a C. elegans connectome running as an on-chain dynamical system
 
-A digital organism whose brain is not simulated beside the chain — it is
-simulated **by** the chain. All 302 neurons of the *C. elegans* hermaphrodite
-connectome (Cook 2019), a 2D body and chemotaxis run as deterministic Q20
-fixed-point arithmetic inside a single Solidity contract on BSC mainnet. Every
-membrane voltage, every spike, every turn is on-chain state, reproducible
-byte-for-byte by anyone who re-runs the spec.
+An honest one-paragraph framing first, because the slogans oversell the biology:
+this is a **spiking (leaky integrate-and-fire) abstraction** of the *C. elegans*
+hermaphrodite connectome (Cook 2019) wired to a small **hand-tuned** sensorimotor
+controller, executed as deterministic Q20 fixed-point arithmetic inside one
+Solidity contract on BSC mainnet. Every membrane voltage, spike and turn is
+on-chain state, reproducible byte-for-byte by anyone who re-runs the spec. It is
+an *engineering* artifact — a nervous-system-shaped, chain-resident dynamical
+system — **not** an electrophysiological reconstruction of the animal, and not a
+brain that emerged from the wiring diagram. See "Limitations" below before
+repeating any neuroscience claim.
 
 ## On-chain (BNB Chain mainnet, chainId 56)
 
 | Contract        | Address                                                              | Role |
 | --------------- | -------------------------------------------------------------------- | ---- |
-| `WormBrain`     | `0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B`                          | the living brain (fully on-chain dynamics) |
+| `WormBrainV2`   | `0x18174bb0049d43fA75f468a037dfC32899f01dBB`                          | the live brain: on-chain LIF dynamics + a persistent per-neuron memory trace M (canonical) |
+| `WormBrain` (v1)| `0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B`                          | **legacy / retired** at tick 49; its live state was migrated into the V2 genesis above |
 | `WormGenome`    | `0xb11a96464ea974cb34ddfbec862249d8f8bb007f`                          | quantized connectome commitment (companion layer) |
-| `WormHeartbeat` | `0x3dEC2612c7603904f6faf1B4D0937A4668a20eC2`                          | signed off-chain simulation ledger (companion layer) |
+| `WormHeartbeat` | `0x3dEC2612c7603904f6faf1B4D0937A4668a20eC2`                          | a **signed off-chain simulation ledger** (companion layer) — this design posts a stateRoot commitment, it does not run the dynamics on-chain |
 
 **Two-phase genesis.** The canonical connectome blob is ~41 KB, and EIP-3860
 caps a deploy payload at 49152 bytes, so the genome cannot be injected through
@@ -27,8 +32,79 @@ permissionless:
   never be altered.
 - `stimulate(idx, amp)` — inject current into any neuron; it takes effect on
   the next step and decays beat by beat.
-- `stateHash()` — sha256 over 912 32-byte big-endian words (V / gate / stim /
-  position / heading / tick), byte-identical to the Python reference.
+- `stateHash()` — sha256 over `1 + 4*302 + 5 = 1214` 32-byte big-endian words
+  (V / gate / stim / the v2 memory trace M / position / heading / tick),
+  byte-identical to the Python reference.
+
+## Limitations, provenance and how to verify
+
+Written to be quoted accurately. What the project does **not** claim matters as
+much as what it does.
+
+**It is a model abstraction, not electrophysiology.** Real *C. elegans* chemical
+synapses are largely **graded** (continuous, sub-threshold), not all-or-nothing
+spikes. This contract uses threshold firing plus post-spike suppression because
+that is what runs deterministically in Q20 fixed-point on the EVM — it is a
+computational convenience, not a measurement of the animal. It has no
+dendritic compartments, no explicit gap-junction conductances, no ion-channel
+kinetics, no neuromodulatory diffusion. OpenWorm / c302-class models add exactly
+those; this repo does not aim to, and even the off-chain `worm/lif_worm.py` is
+kept only as a behavioural reference, not a validated simulation.
+
+**The behaviour is designed, not emergent.** The chemotaxis gains, the food
+coordinates and the turning coefficients are **hand-tuned constants** wired onto
+classic motor/inter-neuron groups (ASEL/R, AWAL/R, AWCL/R, AVAL/R, AVBL/R). The
+Cook connectome supplies only the *sparse wiring topology*; the steering toward
+food is a controller a person wrote, not a property that self-organised out of
+the connectome. Treat "it does chemotaxis" as "a designed controller runs on a
+connectome-shaped substrate" — reproducible, but not a scientific prediction.
+
+**"Fully on-chain" needs one discount.** State, dynamics and *integrity* are
+on-chain: every `advance` re-checks `keccak256(connBlob) == connRoot`, and
+`stateHash()` commits the whole live state, so the wiring and the trajectory
+cannot be silently altered. But *availability and liveness* are off-chain: the
+~41 KB blob must be re-supplied by whoever calls `advance`, and continuous
+"life" only exists for as long as someone keeps paying gas (~14.2M gas per step
+on V2). `WormHeartbeat` is by design an off-chain simulation ledger, not a
+running brain. Permissionless is not the same as economically autonomous — a
+paused keeper means a paused worm (the read-only page then reports HALTED).
+
+**Provenance of the connectome.** The edge table is generated by
+`worm/export_connectome.py` from the Cook 2019 hermaphrodite dataset (via the
+`cect` library), quantised to the on-chain fixed-point genome. The resulting
+anchor is
+`connRoot = 0xf12410a5de0073148d04c237c2da534d96d997f6812a3d896a6e4cbed9b4a177`.
+Because `advance` hashes the blob it is given against this on-chain constant, a
+cropped or re-scaled table produces a different hash and **reverts** — the table
+used at runtime is provably the one that was seeded. The initial seed itself is
+one deployer transaction, so its integrity reduces to that single event plus the
+reproducible `connRoot`.
+
+**Bytecode ↔ source, and the honest gap.** The bundled Hardhat golden test proves
+*"this Solidity matches this Python spec"* — it does **not** prove the on-chain
+bytes came from this Solidity. Two things close that:
+
+- A gas-free, key-free local check ships with this repo: after
+  `npx hardhat compile`, `node contracts/scripts/verify_bytecode.cjs` recompiles
+  `WormBrainV2.sol` with the pinned settings (solc 0.8.24, viaIR, runs=200),
+  fetches `eth_getCode` at the live address, and compares. It reports a
+  byte-identical solc **metadata** fingerprint and **0 real code differences**,
+  the only deltas being the two inlined `deployer` immutable slots (the
+  constructor's `msg.sender`) — i.e. the deployed executable code is this source.
+- That check is self-attesting. What makes it third-party visible is **publishing
+  the source on BscScan**, still an open task here: it needs `BSCSCAN_API_KEY`,
+  then
+  `npx hardhat verify --network bscMainnet 0x18174bb0049d43fA75f468a037dfC32899f01dBB`.
+  Until that is done, read this repo as "verifiable by anyone who compiles it",
+  not as "independently verified on an explorer".
+
+**Reproducibility today is self-service, not third-party.** Anyone can rerun
+`python worm/brain_spec.py` (golden integer trajectory),
+`node contracts/scripts/verify_neurons_review.cjs` (blob == connRoot and the
+frozen neuron index table), and `hardhat test` (35 passing). There is not yet an
+external reproduction report, and the public history of this repo is short; a
+reviewer should assume only in-repo evidence until BscScan verification and any
+third-party run exist.
 
 ## Calling the organism (integration layers)
 

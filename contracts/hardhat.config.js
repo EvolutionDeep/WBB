@@ -36,8 +36,10 @@ module.exports = {
     },
   },
   etherscan: {
-    apiKey: {
-      bsc: process.env.BSCSCAN_API_KEY || "",
-    },
+    // Etherscan v2 uses a single key across supported chains (incl. BSC).
+    apiKey: process.env.BSCSCAN_API_KEY || "",
+  },
+  sourcify: {
+    enabled: false,
   },
 };
