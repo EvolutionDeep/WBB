@@ -45,6 +45,9 @@ ROOT = HERE.parent.parent
 CONTRACTS_ENV = ROOT / "contracts" / ".env"
 ADDRESSES = ROOT / "contracts" / "deployed_addresses.json"
 BRAIN_ABI = ROOT / "contracts" / "artifacts" / "contracts" / "WormBrainV2.sol" / "WormBrainV2.json"
+# minimal public ABI shipped with the repo, so a fresh clone (no hardhat build)
+# can still run a community node
+BRAIN_ABI_MIN = HERE / "brain_abi.json"
 WEIGHTS = ROOT / "worm" / "data" / "brain_weights.json"
 
 RPC = "https://bsc-dataseed1.bnbchain.org"
@@ -219,7 +222,10 @@ def main():
         print("WormBrain not deployed yet (see contracts/scripts/deploy_brain.js)", file=sys.stderr)
         sys.exit(1)
     brain_addr = Web3.to_checksum_address(rec["WormBrain"]["address"])
-    abi = json.loads(BRAIN_ABI.read_text(encoding="utf-8"))["abi"]
+    if BRAIN_ABI.exists():
+        abi = json.loads(BRAIN_ABI.read_text(encoding="utf-8"))["abi"]
+    else:
+        abi = json.loads(BRAIN_ABI_MIN.read_text(encoding="utf-8"))
     blob_hex = json.loads(WEIGHTS.read_text(encoding="utf-8"))["blob"]
     blob = bytes.fromhex(blob_hex[2:] if blob_hex.startswith("0x") else blob_hex)
 

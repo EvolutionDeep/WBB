@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>on-chain worm · live badge</title>
+<!--
+  Embeddable life badge for the BSC on-chain worm. Read-only by design:
+  one eth_call per poll against a public RPC, no libraries, no signing,
+  no state-changing calls of any kind.
+
+  Embed on your site:
+    <iframe src="https://bscworm.com/badge.html" width="260" height="72"
+            style="border:0;border-radius:10px" title="on-chain worm"></iframe>
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: transparent; }
+  body {
+    font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #d7e2ee; display: flex; align-items: center; justify-content: center;
+  }
+  .badge {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: #0d1420; border: 1px solid #1d2a3d; border-radius: 10px;
+    white-space: nowrap;
+  }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: #5a6a7d; }
+  .live .dot { background: #35d07f; box-shadow: 0 0 8px #35d07f88; animation: pulse 2s infinite; }
+  .halted .dot { background: #ff5d5d; }
+  @keyframes pulse { 50% { box-shadow: 0 0 2px #35d07f44; } }
+  .tick b { color: #ffffff; font-size: 15px; }
+  .sub { color: #7d90a8; font-weight: 400; font-size: 11px; }
+  a { color: #6cc4ff; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="badge" id="b">
+    <span class="dot"></span>
+    <span class="tick">tick <b id="t">…</b></span>
+    <span class="sub" id="s">connecting</span>
+    <span class="sub">· <a href="https://bscworm.com" target="_blank" rel="noopener">bscworm.com</a></span>
+  </div>
+<script>
+(function () {
+  "use strict";
+  // the canonical immutable brain on BSC mainnet (chainId 56)
+  var BRAIN = "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3";
+  var TICK_SEL = "0x3eaf5d9f";            // keccak("tick()")[:4]
+  var ENDPOINTS = [
+    "https://bsc-rpc.publicnode.com",
+    "https://bsc-dataseed1.bnbchain.org",
+    "https://bsc-dataseed2.bnbchain.org"
+  ];
+  // a keep-alive node may ethically slow its heartbeat to 300s; a badge should
+  // only shout HALTED when three such stretched beats plus slack have passed
+  var ALIVE_WINDOW_MS = 660000;
+  var POLL_MS = 60000;
+
+  var el = document.getElementById("t"), es = document.getElementById("s"),
+      b = document.getElementById("b");
+
+  function ethCall(url) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_call",
+                             params: [{ to: BRAIN, data: TICK_SEL }, "latest"] })
+    }).then(function (r) { return r.json(); }).then(function (j) {
+      if (!j.result) throw new Error("no result");
+      return parseInt(j.result, 16);
+    });
+  }
+
+  var lastTick = null, lastChange = 0;
+  function poll(i) {
+    i = i || 0;
+    if (i >= ENDPOINTS.length) { es.textContent = "rpc unreachable"; return; }
+    ethCall(ENDPOINTS[i]).then(function (tick) {
+      var now = Date.now();
+      if (lastTick === null || tick !== lastTick) { lastChange = now; lastTick = tick; }
+      el.textContent = String(tick);
+      var fresh = now - lastChange < ALIVE_WINDOW_MS;
+      b.className = "badge " + (fresh ? "live" : "halted");
+      var age = Math.round((now - lastChange) / 1000);
+      es.textContent = fresh ? "alive · advanced " + age + "s ago" : "halted · no advance " + age + "s";
+      setTimeout(function () { poll(0); }, POLL_MS);
+    }).catch(function () { poll(i + 1); });
+  }
+  poll(0);
+})();
+</script>
+</body>
+</html>

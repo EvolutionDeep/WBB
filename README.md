@@ -307,7 +307,56 @@ white flash marks a spike-count increment, and the body's peristaltic wave
 amplitude comes from the motor-neuron gates. Any display gains applied to make
 small signals visible are stated in the HUD rather than silently inflated. When
 `tick` stops changing (nobody paid for an `advance`), the wave freezes and the
-HUD shows **HALTED** — the viewer never animates a frozen animal.
+HUD shows **HALTED** — the viewer never animates a frozen animal. Liveness is
+judged against the node's *learned* heartbeat cadence (an EMA of observed tick
+intervals, floored at 90 s): a deliberately slow keeper is not misreported as
+dead, while a real stall still freezes within three learned beats. The HUD also
+prints the age of the last advance, so the pace is never hidden.
+
+### Keep-alive nodes (anyone can run one)
+
+`advance(n, connBlob)` is permissionless and deterministic: any wallet can pay
+for any step, and every honest node computes exactly the same next state. The
+resident keeper (`worm/node/brain_daemon.py`) ships with `--adaptive`: as the
+funding wallet drains, the beat interval stretches toward spreading the
+remaining steps over `--survive-hours` (capped by `--max-interval`) — the heart
+slows down instead of stopping dead at the reserve floor.
+
+A community node needs no build toolchain:
+
+```powershell
+# bare python (web3 + python-dotenv; the ABI falls back to worm/node/brain_abi.json)
+pip install -r worm/node/requirements.txt
+set DEPLOYER_PRIVATE_KEY=<your own wallet key>
+python worm/node/brain_daemon.py --continuous --interval 300 --adaptive
+```
+
+```bash
+# or containerised (context = repository root)
+docker build -t worm-node -f worm/node/Dockerfile .
+docker run -d --name worm-node -e DEPLOYER_PRIVATE_KEY=<your-key> worm-node
+```
+
+Multiple nodes are safe: `advance` reverts nothing that belongs to anyone else,
+concurrent keepers at worst waste each other's gas on identical steps. The node
+only advances — it never stimulates.
+
+`worm/node/archive_life.py` (read-only) exports the animal's whole biography:
+it scans every `Advanced` event from the deployment block and writes a
+per-heartbeat CSV (tick, block, UTC time, tx hash, fired, cumulative spikes).
+Anyone can re-run it and diff the result against the chain.
+
+### Embeddable life badge
+
+`frontend/public/badge.html` is a dependency-free, read-only widget (one
+`eth_call` per minute against a public RPC, pinned `tick()` selector) that
+shows the live tick and an honest LIVE/HALTED dot sized to three stretched
+beats. Other sites embed it with:
+
+```html
+<iframe src="https://bscworm.com/badge.html" width="260" height="72"
+        style="border:0;border-radius:10px" title="on-chain worm"></iframe>
+```
 
 ## Determinism
 
@@ -337,7 +386,8 @@ The live page is the **read-only dashboard** described above
 the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
 RPC — no worker in the data path, no second brain in the browser, nothing
 signed or sent. The optional Three.js 3D viewer only reads view getters.
-`npm test` runs a static read-only guardrail; `npm run build` emits `dist/`.
+`npm test` runs a static read-only guardrail (it also scans `public/badge.html`);
+`npm run build` emits `dist/` including the embeddable badge.
 
 ```powershell
 cd frontend; npm install; npm run dev; npm test

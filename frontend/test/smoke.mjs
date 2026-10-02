@@ -28,6 +28,15 @@ for (const bad of ["sendTransaction", "getSigner", "new Wallet", "signer.send", 
   absent(allSrc, bad, `no signing/tx path in src/*.js: ${bad}`);
 }
 
+// --- embeddable badge: public/badge.html is read-only eth_call with a pinned
+// tick() selector; it must stay free of any signing or state-changing path.
+const badge = readFileSync(join(root, "public", "badge.html"), "utf8");
+has(badge.includes("0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3"), "badge points at the canonical brain");
+has(badge.includes("0x3eaf5d9f"), "badge pins the tick() selector");
+for (const bad of ["sendTransaction", "getSigner", "window.ethereum", "privatekey", "mnemonic", "advance(", "stimulate(", "inject("]) {
+  absent(badge, bad, `badge.html stays read-only: ${bad}`);
+}
+
 // --- 3D viewer specifics: it may only READ view getters, and its data must be the
 // corrected connectome (5144 directed edges over 302 neurons).
 const viz = readFileSync(join(root, "src", "worm3d.js"), "utf8");
