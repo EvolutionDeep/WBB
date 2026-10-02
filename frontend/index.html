@@ -199,9 +199,27 @@
     <div class="list" id="stim-list"></div>
   </section>
 
+  <!-- 3b. POKE (opt-in write path) -->
+  <section class="card" id="card-poke">
+    <h2><span class="num">04</span> · Poke the worm (opt-in · your wallet · your gas)</h2>
+    <div class="viz-bar">
+      <button id="poke-enable" type="button">ENABLE POKE UI</button>
+      <button id="poke-food" type="button" disabled>POKE +2.0 → ASEL (food-like)</button>
+      <button id="poke-avert" type="button" disabled>POKE −2.0 → ASER (repellent)</button>
+    </div>
+    <div class="row"><span class="k">RESULT</span><span id="poke-status" class="note">disabled — this page stays read-only until you enable the poke UI</span></div>
+    <div class="note">
+      The only write path on this site: it encodes exactly one call, SenseAdapter.inject(int256), signed
+      and paid by YOUR own wallet (a few ten-thousandths of BNB). The brain is passive — your current
+      queues into the chemoreceptor and bites on the NEXT advance by a keeper node. Nothing on this
+      page can move, pause or own the animal.
+    </div>
+    <div class="list" id="poke-feed"></div>
+  </section>
+
   <!-- 4. EVIDENCE -->
   <section class="card" id="card-evidence">
-    <h2><span class="num">04</span> · Evidence (recorded mainnet verifications)</h2>
+    <h2><span class="num">05</span> · Evidence (recorded mainnet verifications)</h2>
     <div id="evidence"></div>
     <div class="note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
   </section>
@@ -212,7 +230,7 @@
   <span>RPC <span id="rpc-host" class="v mono">—</span></span>
   <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
   <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
-  <span class="ro">READ-ONLY · NO WALLET · NO TRANSACTIONS</span>
+  <span class="ro">READ-ONLY BY DEFAULT · ONE OPT-IN POKE, SIGNED BY YOUR OWN WALLET</span>
 </footer>
 
 <script type="module" src="/src/main.js"></script>

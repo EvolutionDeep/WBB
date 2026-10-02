@@ -9,9 +9,12 @@ import { dirname, join } from "node:path";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const main = readFileSync(join(root, "src", "main.js"), "utf8");
-// every module shipped in the bundle is covered by the read-only guard
+// every module shipped in the bundle is covered by the read-only guard,
+// except src/poke.js: the one opt-in write path, fenced by its own strict
+// guards further below (pinned single contract + single function).
 const srcFiles = readdirSync(join(root, "src")).filter((f) => f.endsWith(".js"));
-const allSrc = srcFiles.map((f) => readFileSync(join(root, "src", f), "utf8")).join("\n");
+const guardFiles = srcFiles.filter((f) => f !== "poke.js");
+const allSrc = guardFiles.map((f) => readFileSync(join(root, "src", f), "utf8")).join("\n");
 
 let fail = 0;
 const has = (cond, label) => { if (!cond) fail++; console.log(`${cond ? "OK  " : "FAIL"}  ${label}`); };
@@ -23,10 +26,26 @@ has(main.includes("1048576n"), "Q20 SCALE constant present");
 has(main.includes("HALTED"), "staleness rule surfaced (HALTED)");
 has(/read-?only/i.test(main), "page advertises read-only");
 
-// The dashboard must never gain a way to move the animal or spend funds.
+// The default modules must never gain a way to move the animal or spend funds.
 for (const bad of ["sendTransaction", "getSigner", "new Wallet", "signer.send", "window.ethereum", "privatekey", "mnemonic"]) {
-  absent(allSrc, bad, `no signing/tx path in src/*.js: ${bad}`);
+  absent(allSrc, bad, `no signing/tx path outside poke.js: ${bad}`);
 }
+
+// --- poke module: the single sanctioned write path, hard-fenced.
+const poke = readFileSync(join(root, "src", "poke.js"), "utf8");
+has(poke.includes('"0xbe0C5117f740a9333614D806Bd50C3907186C6fD"'), "poke targets the pinned SenseAdapter");
+has(poke.includes("function inject(int256 signedIntensity) external"), "poke encodes only inject(int256)");
+absent(poke, "advance(", "poke never encodes the brain's advance");
+absent(poke, "stimulate(", "poke never stimulates the brain directly");
+absent(poke, "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3", "poke never points at the brain contract");
+absent(poke, "privatekey", "poke never handles a raw key");
+absent(poke, "mnemonic", "poke never handles a mnemonic");
+// the adapter must be the ONLY contract address the module can ever talk to
+const pokeAddrs = [...poke.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase());
+has(pokeAddrs.length > 0 && pokeAddrs.every((a) => a === "0xbe0c5117f740a9333614d806bd50c3907186c6fd"),
+  "SenseAdapter is the only address in poke.js");
+// the write path must stay opt-in: main.js only dynamic-imports the module
+has(main.includes('import("./poke.js")'), "poke loads lazily via dynamic import in main.js");
 
 // --- embeddable badge: public/badge.html is read-only eth_call with a pinned
 // tick() selector; it must stay free of any signing or state-changing path.
@@ -57,6 +76,6 @@ function hasDir(g, a, b) {
   return g.edges.some(([s, d]) => s === ia && d === ib);
 }
 
-console.log(`scanned ${srcFiles.length} src modules: ${srcFiles.join(", ")}`);
+console.log(`scanned ${srcFiles.length} src modules (read-only guard on ${guardFiles.length}, dedicated fence on poke.js): ${srcFiles.join(", ")}`);
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nFRONTEND READ-ONLY SMOKE PASSED");
 process.exitCode = fail ? 1 : 0;

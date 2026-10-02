@@ -358,6 +358,22 @@ beats. Other sites embed it with:
         style="border:0;border-radius:10px" title="on-chain worm"></iframe>
 ```
 
+### Poke the worm (opt-in write path)
+
+`inject(int256)` on the deployed `SenseAdapter` was always permissionless —
+anyone could write to it from BscScan or a script. The dashboard now exposes
+that door honestly, as the site's single sanctioned write path
+(`src/poke.js`, dynamically imported only after an explicit opt-in click):
+the visitor connects their own wallet, pays their own gas (~0.0000x BNB), and
+the module can encode exactly one call against one pinned address. Positive
+intensity routes to ASEL, negative to ASER, clamped at the adapter's
+`ampCap` (2.0 in Q20). A below-the-fold feed renders recent `Injected` events
+straight from chain logs — public facts, including who poked and how hard.
+The smoke test fences this module: no `advance`/`stimulate` encodings, the
+adapter as the only address in the file, no key material, lazy import only.
+Since the brain is passive, a poke queues current and takes effect on the next
+`advance` — the UI states this instead of pretending instant motion.
+
 ## Determinism
 
 `worm/brain_spec.py` is the authoritative integer spec (MIT license, Q20 fixed
@@ -384,10 +400,13 @@ synapse direction right.
 The live page is the **read-only dashboard** described above
 (`### Read-only dashboard` and `### 3D viewer`): a Vite + ethers app that reads
 the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
-RPC — no worker in the data path, no second brain in the browser, nothing
-signed or sent. The optional Three.js 3D viewer only reads view getters.
-`npm test` runs a static read-only guardrail (it also scans `public/badge.html`);
-`npm run build` emits `dist/` including the embeddable badge.
+RPC — no worker in the data path, no second brain in the browser. By default
+nothing is signed or sent; the only exception is the explicitly opt-in poke
+module (`### Poke the worm`), which relays a single pinned call to the
+visitor's own wallet. The optional Three.js 3D viewer only reads view getters.
+`npm test` runs a static read-only guardrail covering every module plus a
+dedicated fence around the poke path; `npm run build` emits `dist/` including
+the embeddable badge.
 
 ```powershell
 cd frontend; npm install; npm run dev; npm test

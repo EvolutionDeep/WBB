@@ -389,10 +389,33 @@ function wireViz() {
   if (t) t.addEventListener("click", stopViz);
 }
 
+// The poke module is the site's single sanctioned write path and is deliberately
+// NOT part of the default page: it only loads after an explicit opt-in click,
+// stays behind a pinned single-call ABI, and is fenced by its own smoke guards.
+function wirePoke() {
+  const b = el("poke-enable");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    try {
+      const m = await import("./poke.js");
+      m.init();
+      b.textContent = "POKE UI ON";
+      b.disabled = true;
+      const f = el("poke-food"), a = el("poke-avert");
+      if (f) f.disabled = false;
+      if (a) a.disabled = false;
+    } catch (e) {
+      const s = el("poke-status");
+      if (s) s.textContent = "poke module failed to load: " + ((e && e.message) || e);
+    }
+  }, { once: true });
+}
+
 async function boot() {
   el("rpc-host").textContent = new URL(RPC_SEEDS[0]).host;
   renderEvidence();
   wireViz();
+  wirePoke();
   await poll();
   setInterval(poll, POLL_MS);
 }
