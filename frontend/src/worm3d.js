@@ -297,6 +297,12 @@ export async function createWormViz({ container, getTarget }) {
   // remembered endpoint that proved it can serve batches (avoids re-probing each poll)
   let goodUrl = null;
 
+  // built-in batch-capable fallback: the configured seed list can be narrowed by
+  // a localStorage wbb_rpc override from earlier debugging, and gateways like
+  // bsc-dataseed swallow batches entirely — if nothing configured serves a batch,
+  // try this instead of leaving the viewer stuck reporting an error.
+  const BATCH_FALLBACK = "https://bsc-rpc.publicnode.com";
+
   // endpoints observed to honour JSON-RPC batches are tried first
   const BATCH_FIRST = [/publicnode/i, /ankr/i, /llamarpc/i];
   const batchRank = (u) => { const i = BATCH_FIRST.findIndex((re) => re.test(u)); return i < 0 ? 99 : i; };
@@ -310,6 +316,7 @@ export async function createWormViz({ container, getTarget }) {
       if (!brain) throw new Error("brain address not resolved yet");
       const list = orderCandidates((rpcUrls || []).filter(Boolean));
       if (!list.length) throw new Error("no RPC endpoint configured");
+      const url0 = list[0];
       // prefer the endpoint that already worked, then try the rest
       const order = goodUrl ? [goodUrl, ...list.filter((u) => u !== goodUrl)] : list;
 
@@ -329,6 +336,12 @@ export async function createWormViz({ container, getTarget }) {
           break;
         } catch (e) { lastErr = e; }
       }
+      if (!raw) {
+        if (url0 !== BATCH_FALLBACK) {
+          try { raw = await batchEthCall(BATCH_FALLBACK, brain, calls); goodUrl = BATCH_FALLBACK; st.probed = BATCH_FALLBACK; lastErr = null; }
+          catch (e) { lastErr = e; }
+        }
+      }
       if (!raw) throw lastErr || new Error("no endpoint serves batches");
       const dec = (kind, hex) => VIZ_IFACE.decodeFunctionResult(kind, hex)[0];
       const prevTick = st.tick;
@@ -345,7 +358,9 @@ export async function createWormViz({ container, getTarget }) {
 
       // liveness is the tick actually moving, not the read succeeding: stamp the beat
       // only on a change, so a stalled chain freezes the body instead of replaying
-      // the last gates forever.
+      // the last gates forever. A single transient read failure must not freeze an
+      // animal whose tick was demonstrably moving seconds ago, so liveness is the
+      // freshness window alone; the error line below still reports the failure.
       if (prevTick === null || st.tick !== prevTick) st.tickAt = Date.now();
 
       // a spike is a real event: spikeCount only ever grows, so any increase fired
@@ -376,7 +391,7 @@ export async function createWormViz({ container, getTarget }) {
     const rev = (gt[IDX.AVAL] || 0) + (gt[IDX.AVAR] || 0);
     const turn = (gt[IDX.AWCL] || 0) + (gt[IDX.AWCR] || 0) - (gt[IDX.AWAL] || 0) - (gt[IDX.AWAR] || 0);
     const net = fwd - rev;
-    const alive = st.tick !== null && Date.now() - st.tickAt < 90000 && !st.error;
+    const alive = st.tick !== null && Date.now() - st.tickAt < 90000;
     if (!alive) return { amp: 0, dir: 0, bend: 0, alive: false };
     const amp = Math.min(0.5, Math.abs(net) * AMP_GAIN);
     return { amp, dir: net >= 0 ? 1 : -1, bend: Math.max(-0.6, Math.min(0.6, turn * 0.15)), alive: true };
