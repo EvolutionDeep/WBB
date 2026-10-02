@@ -198,7 +198,9 @@ const PUSH_TTL_S = 900;
 let pushCache = { at: 0, data: null };
 
 async function buildSnapshot(env) {
-  const addr = env.BRAIN_ADDRESS || "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
+  // the live WormBrainV2; the legacy reverse-synapse brain 0x18174bb0... and v1
+  // 0xC33B1a8a... are immutable history and must never be a fallback default
+  const addr = env.BRAIN_ADDRESS || "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3";
   // pin every getter to ONE block so V/gate/stim/M/spikes and stateHash all
   // describe the same on-chain state; without this a beat landing mid-rebuild
   // would splice two blocks together and the arrays would not match stateHash.
@@ -303,7 +305,7 @@ async function apiPushEvents(env, req) {
 }
 
 async function apiEvents(env, url) {
-  const addr = env.BRAIN_ADDRESS || "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
+  const addr = env.BRAIN_ADDRESS || "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3";
   let blocks = Math.min(2000, parseInt(url.searchParams.get("blocks") || DEFAULT_BLOCKS, 10));
   if (!evPush.length && env.WBB_STORE) {
     const raw = await env.WBB_STORE.get("events");
@@ -358,8 +360,15 @@ export default {
         case "/api/push-snapshot": return req.method === "POST" ? await apiPushSnapshot(env, req) : json({ error: "POST only" }, 405);
         case "/api/push-events": return req.method === "POST" ? await apiPushEvents(env, req) : json({ error: "POST only" }, 405);
         case "/api/status": {
-          const s = cache.data || (await buildSnapshot(env));
-          return json({ ok: true, address: s.address, tick: s.tick, totalSpikes: s.totalSpikes, cacheAgeS: Math.round(Date.now() / 1000 - cache.at) });
+          // A cold isolate has nothing cached yet. The rebuild has to stamp the
+          // cache: measuring age against the initial at = 0 reported a snapshot as
+          // ~56 years old at the very second it was computed.
+          const now = Date.now() / 1000;
+          let s = cache.data;
+          let ageAt = cache.at;
+          if (pushCache.data && now - pushCache.at < PUSH_TTL_S) { s = pushCache.data; ageAt = pushCache.at; }
+          if (!s) { s = await buildSnapshot(env); cache = { at: now, data: s }; ageAt = now; }
+          return json({ ok: true, address: s.address, tick: s.tick, totalSpikes: s.totalSpikes, cacheAgeS: Math.round(now - ageAt) });
         }
         default:
           return json({

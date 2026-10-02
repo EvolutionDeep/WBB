@@ -128,18 +128,25 @@ async function withRotation(fn) {
 const asContract = (p, addr, abi) => new ethers.Contract(addr, abi, p);
 
 // scan backward in bounded chunks until the newest matching event is found.
+// A span that ERRORS is not the same fact as a span with no matches: public
+// endpoints reject wide getLogs ranges outright, and reading "rejected" as "no
+// advance happened" would render a living worm as dead. Callers therefore get an
+// errored count alongside the log and can stay neutral instead of accusing the chain.
 async function findLatestEvent(contract, eventName, head, maxBlocks, chunk) {
   let from = head;
   const floor = Math.max(0, head - maxBlocks);
+  let errored = 0;
+  let spans = 0;
   while (from > floor) {
     const lo = Math.max(floor, from - chunk + 1);
+    spans++;
     let logs;
     try { logs = await contract.queryFilter(contract.interface.getEvent(eventName), lo, from); }
-    catch { logs = []; }
-    if (logs.length) return logs[logs.length - 1];
+    catch { errored++; logs = []; }
+    if (logs.length) return { log: logs[logs.length - 1], errored, spans };
     from = lo - 1;
   }
-  return null;
+  return { log: null, errored, spans };
 }
 
 async function getRecentEvents(contract, eventName, head, span) {
@@ -237,9 +244,48 @@ async function buildStimList(p, head, brainAddr, adapterAddr, stimNow) {
   }
 }
 
+// ---- observed heartbeat cadence (what "stalled" is allowed to mean) ----
+// The keeper runs on an adaptive cadence, so the liveness window has to come from
+// what this page actually observes, never from a block count. The contract's
+// STALE_WINDOW is 20 blocks and BSC now seals well below one block per second, so
+// that constant is worth seconds -- far tighter than any honest beat of this worm.
+// It stays on screen for reference; it does not decide the verdict.
+const CADENCE_KEY = "wbb_cadence_v1";
+const MIN_STALE_SEC = 90;   // floor: a fast beat must never make the page twitchy
+const CADENCE_MULT = 3;     // three learned beats with nothing = stalled
+const GAP_MAX_MS = 3600e3;  // a laptop waking from sleep is not a slowed heartbeat
+
+function loadCadence() {
+  try { return JSON.parse(localStorage.getItem(CADENCE_KEY)) || { tick: null, at: 0, gap: 0 }; } catch { return { tick: null, at: 0, gap: 0 }; }
+}
+function saveCadence(c) { try { localStorage.setItem(CADENCE_KEY, JSON.stringify(c)); } catch { /* quota */ } }
+
+// Fold one reading into the model. Only a CHANGING tick counts as an advance, and
+// only the interval between two real advances teaches the cadence. The first
+// reading is a baseline with at = 0: "here is the tick I see now" is not evidence
+// that a beat just happened, and treating it as such would fabricate a LIVE.
+function observeTick(c, tick, now) {
+  if (c.tick === null) { c.tick = tick; c.at = 0; return c; }
+  if (tick === c.tick) return c;
+  if (c.at) {
+    const gap = now - c.at;
+    if (gap > 0 && gap < GAP_MAX_MS) c.gap = c.gap ? Math.round(0.3 * gap + 0.7 * c.gap) : gap;
+  }
+  c.tick = tick;
+  c.at = now;
+  return c;
+}
+
+function staleSeconds(c) {
+  return Math.max(MIN_STALE_SEC, Math.round((CADENCE_MULT * (c.gap || 0)) / 1000));
+}
+
+const fmtAge = (s) => (s === null ? "—" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}min` : `${(s / 3600).toFixed(1)}h`);
+
 // ---- main poll ----
 const POLL_MS = 10000;
 let hist = loadHist();
+let cadence = loadCadence();
 let BRAIN_ADDR = null; // resolved from readout.brain() on the first successful poll
 
 async function poll() {
@@ -258,12 +304,37 @@ async function poll() {
       const r = await readout.read();
       const [connRoot, tickB, stateHash] = await Promise.all([brain.connRoot(), brain.tick(), brain.stateHash()]);
 
-      // last advance block (scan Advanced events backward)
-      const adv = await findLatestEvent(brain, "Advanced", head, 40000, 2000);
+      // Last advance: a bounded backward scan. Public endpoints reject wide getLogs
+      // ranges, so the span stays short and a rejection is REPORTED, never assumed
+      // to mean the worm stopped.
+      const { log: adv, errored: advErrored, spans: advSpans } = await findLatestEvent(brain, "Advanced", head, 6000, 2000);
       const lastAdvBlock = adv ? adv.blockNumber : null;
       const sinceAdv = lastAdvBlock !== null ? head - lastAdvBlock : null;
       const SW = Number(staleWindow);
-      const halted = sinceAdv === null || sinceAdv > SW;
+
+      // Elapsed time since the last real advance, from two independent witnesses:
+      // the block timestamp of the newest Advanced event, and the last tick change
+      // this page observed with plain eth_call. Both measure the same fact, so the
+      // fresher one wins, and either proving life is enough to say LIVE.
+      cadence = observeTick(cadence, Number(r.tick), Date.now());
+      saveCadence(cadence);
+      const windowSec = staleSeconds(cadence);
+      let eventAge = null;
+      if (adv) {
+        try {
+          const ab = await p.getBlock(lastAdvBlock);
+          if (ab) eventAge = Math.max(0, Math.round(Date.now() / 1000 - ab.timestamp));
+        } catch { /* no block timestamp; the local witness still stands */ }
+      }
+      const localAge = cadence.at ? Math.max(0, Math.round((Date.now() - cadence.at) / 1000)) : null;
+      const witness = [eventAge, localAge].filter((v) => v !== null);
+      const ageSec = witness.length ? Math.min(...witness) : null;
+      const observable = ageSec !== null;
+      const halted = observable && ageSec > windowSec;
+      // what one block is worth in seconds right now, inferred from the two
+      // witnesses themselves rather than hard-coded, so the stale-window
+      // comparison below is honest about why a block count cannot be the verdict
+      const secPerBlock = sinceAdv > 0 && ageSec !== null ? ageSec / sinceAdv : null;
 
       // identities
       const aLink = el("brain-addr"); aLink.href = bscscanAddr(brainAddr); aLink.textContent = brainAddr;
@@ -273,16 +344,30 @@ async function poll() {
       setText("tick", r.tick.toString() + (tickB.toString() === r.tick.toString() ? "" : ` (raw ${tickB})`));
       setText("state-hash", r.stateHash);
       setText("cur-block", head.toLocaleString());
-      setText("last-adv-block", lastAdvBlock === null ? `none in ~40k blk` : lastAdvBlock.toLocaleString());
+      setText("last-adv-block", lastAdvBlock === null
+        ? (advErrored ? `not readable here (${advErrored}/${advSpans} log spans rejected)` : "none in the last 6000 blocks")
+        : lastAdvBlock.toLocaleString());
       setText("since-adv", sinceAdv === null ? "—" : sinceAdv.toLocaleString());
+      setText("adv-age", observable
+        ? `${fmtAge(ageSec)} ago (event ${eventAge === null ? "n/a" : fmtAge(eventAge)} / observed ${localAge === null ? "n/a" : fmtAge(localAge)})`
+        : "no witness yet");
+      const cadSec = cadence.gap ? Math.round(cadence.gap / 1000) : null;
+      setText("stale-window", `${windowSec}s${cadSec ? ` = ${CADENCE_MULT} x learned ~${cadSec}s beat` : ` = floor, no beat learned yet`}`);
 
       const badge = el("status-badge");
-      badge.innerHTML = halted
-        ? `<span class="badge halt">HALTED — no advance in ${SW} blocks</span>`
-        : `<span class="badge live">LIVE — advanced ${sinceAdv} block(s) ago</span>`;
-      el("stale-note").textContent = halted
-        ? `The worm has not advanced for ${sinceAdv === null ? ">40000" : sinceAdv} blocks (> stale window ${SW}). The page says HALTED; there is no animation pretending it is still moving.`
-        : `A reading is stale when current block − last advance block > ${SW}.`;
+      badge.innerHTML = !observable
+        ? `<span class="badge watch">CHECKING — advance not observable yet</span>`
+        : halted
+          ? `<span class="badge halt">HALTED — no advance for ${fmtAge(ageSec)}</span>`
+          : `<span class="badge live">LIVE — advanced ${fmtAge(ageSec)} ago</span>`;
+      const blockMath = sinceAdv === null || secPerBlock === null
+        ? ""
+        : ` Block math, shown for reference only: ${sinceAdv} blocks since the last advance, and the contract's STALE_WINDOW of ${SW} blocks is worth about ${Math.round(SW * secPerBlock)}s at the ~${secPerBlock.toFixed(2)}s per block measured here - far shorter than this worm's heartbeat, which is why a block count cannot decide the verdict.`;
+      el("stale-note").textContent = !observable
+        ? `Neither the advance log nor a changed tick is readable from this endpoint yet, so the page refuses to call the animal dead on a missing reading. It will re-judge on the next poll.`
+        : halted
+          ? `Honest stall: nothing has advanced the brain for ${fmtAge(ageSec)}, past the ${windowSec}s window. Only advance() moves the clock and it costs gas - the keeper may have stopped, while injecting through the adapter below still works for anyone.`
+          : `Liveness is judged on elapsed time: stalled after ${windowSec}s of silence, which is ${CADENCE_MULT}x the ~${cadSec ?? "?"}s beat this page measured from real tick changes.${blockMath}`;
 
       // body
       const cur = { tick: Number(r.tick), approach: Number(r.approach), turn: Number(r.turn), speed: Number(r.speed) };

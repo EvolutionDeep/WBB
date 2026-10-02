@@ -284,10 +284,25 @@ The page reads these three full addresses (all live on BscScan, chainId 56):
 - WormReadout (the `read()` lens): `0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E`
 - SenseAdapter (the stimulation entry): `0xbe0C5117f740a9333614D806Bd50C3907186C6fD`
 
-The brain address is taken from `readout.brain()` on-chain, not hardcoded. When
-`current block − last advance block > 20` (the on-chain `STALE_WINDOW`), the
-Identity panel shows **HALTED** and stops plotting — the page never fakes motion
-or fabricates a trajectory between beats.
+The brain address is taken from `readout.brain()` on-chain, not hardcoded. Liveness
+is judged on **elapsed time, not block count**: the seconds since the last real
+advance are compared against a window of three heartbeat periods, where the period
+is learned from tick changes this page observed itself (floored at 90 s so a fast
+keeper never makes the verdict twitchy). Two independent witnesses feed the age — the
+block timestamp of the newest `Advanced` event, and the last observed tick change —
+and either one proving life is enough to say **LIVE**.
+
+A `getLogs` range an endpoint refuses is reported as *not readable here*, never
+read as absence of a beat: on a missing reading the badge says CHECKING instead of
+pronouncing the animal dead. Only a genuinely elapsed window shows **HALTED**, and
+then the panel stops plotting — the page never fakes motion or fabricates a
+trajectory between beats.
+
+The on-chain `STALE_WINDOW` (20 blocks) is still displayed, next to what it is worth
+in seconds at the block time measured on the fly. BSC currently seals in well under a
+second, which makes that constant worth roughly ten seconds while this keeper beats
+about every 45 — which is exactly why the verdict is time-based and the block count
+is reference only.
 
 ### 3D viewer
 

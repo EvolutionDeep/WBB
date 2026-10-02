@@ -26,6 +26,16 @@ has(main.includes("1048576n"), "Q20 SCALE constant present");
 has(main.includes("HALTED"), "staleness rule surfaced (HALTED)");
 has(/read-?only/i.test(main), "page advertises read-only");
 
+// --- liveness verdict guards (regression fence for the false-HALTED bug) ---
+// BSC seals in well under a second, so any verdict computed from a block count
+// against the contract's 20-block STALE_WINDOW is a few seconds wide and will
+// pronounce a living worm dead between two honest heartbeats.
+has(!main.includes("sinceAdv > SW"), "verdict is not a block-count comparison");
+has(main.includes("staleSeconds") && main.includes("CADENCE_MULT"), "stale window derives from the observed beat");
+has(main.includes("errored"), "a rejected getLogs span is reported, not read as a stall");
+has(main.includes("c.tick === null) { c.tick = tick; c.at = 0"), "a first reading is a baseline, not a fabricated LIVE");
+has(main.includes('"Advanced", head, 6000, 2000'), "advance scan stays within public getLogs limits");
+
 // The default modules must never gain a way to move the animal or spend funds.
 for (const bad of ["sendTransaction", "getSigner", "new Wallet", "signer.send", "window.ethereum", "privatekey", "mnemonic"]) {
   absent(allSrc, bad, `no signing/tx path outside poke.js: ${bad}`);

@@ -54,6 +54,7 @@
   .badge { display: inline-block; padding: 1px 8px; border-radius: 3px; font-size: 11px; letter-spacing: 0.12em; }
   .badge.live { color: var(--grn); border: 1px solid rgba(41,255,155,0.5); }
   .badge.halt { color: var(--red); border: 1px solid rgba(255,77,94,0.55); }
+    .badge.watch { color: var(--amber); border: 1px solid rgba(255,180,84,0.5); }
 
   canvas { display: block; background: rgba(2,6,12,0.85); border: 1px solid rgba(53,224,255,0.14); border-radius: 3px; }
   .gauges { display: flex; gap: 10px; margin-top: 8px; font-size: 11px; }
@@ -171,7 +172,9 @@
     <div class="row"><span class="k">LAST ADVANCE BLOCK</span><span class="v" id="last-adv-block">—</span></div>
     <div class="row"><span class="k">CURRENT BLOCK</span><span class="v" id="cur-block">—</span></div>
     <div class="row"><span class="k">BLOCKS SINCE ADVANCE</span><span class="v" id="since-adv">—</span></div>
-    <div class="note" id="stale-note">A reading is stale when current block − last advance block &gt; 20; the page then says HALTED instead of pretending to move.</div>
+    <div class="row"><span class="k">ADVANCE AGE</span><span class="v" id="adv-age">—</span></div>
+    <div class="row"><span class="k">STALE WINDOW</span><span class="v" id="stale-window">—</span></div>
+    <div class="note" id="stale-note">Liveness is judged on elapsed time against the heartbeat this page has measured, not on a block count: BSC now seals a block in well under a second, so a stale window written in blocks no longer means what it did.</div>
   </section>
 
   <!-- 2. BODY -->
