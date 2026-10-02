@@ -1,0 +1,54 @@
+{
+  "sim_seconds": 900.0,
+  "neurons": 302,
+  "edges": 5146,
+  "total_spikes": 7405,
+  "peak_V": 0.62,
+  "neurons_with_spikes": 6,
+  "mean_dist_early_mm": 52.46,
+  "mean_dist_late_mm": 29.53,
+  "approach_ratio": 1.78,
+  "turn_events": 7,
+  "final_dist_mm": 29.17,
+  "top_spiking_neurons": [
+    [
+      "ASIR",
+      3286
+    ],
+    [
+      "ASIL",
+      3280
+    ],
+    [
+      "AWCL",
+      239
+    ],
+    [
+      "AWCR",
+      234
+    ],
+    [
+      "AWAL",
+      188
+    ],
+    [
+      "AWAR",
+      178
+    ]
+  ],
+  "state_root_samples": 90,
+  "example_state_roots": [
+    [
+      0.0,
+      "ff4563227b91ec8c"
+    ],
+    [
+      10.0,
+      "2f3b9cb70f7e3567"
+    ],
+    [
+      20.0,
+      "b04b377150ac90c0"
+    ]
+  ]
+}

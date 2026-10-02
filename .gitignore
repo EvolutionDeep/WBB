@@ -1,0 +1,31 @@
+# Secrets: the deployer key lives only in contracts/.env and is never committed
+.env
+*.env
+!.env.example
+
+# Dependencies and build outputs
+node_modules/
+contracts/artifacts/
+contracts/cache/
+contracts/genome_args.json
+
+# Local preview pages (not part of the repo for now)
+dapp/
+contracts/preview/
+
+# Third-party clone (recreate with: pip install -e ./cect-src, see README)
+cect-src/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Off-chain node runtime state (regenerable, no secrets)
+worm/node/worm_state.json
+worm/node/beat_payload.json
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db

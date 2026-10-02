@@ -1,0 +1,11 @@
+{
+  "name": "wbb-worker",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare Worker bridge for the on-chain WormBrain (deploy with wrangler)",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test:local": "node test_local.mjs"
+  }
+}

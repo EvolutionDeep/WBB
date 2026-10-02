@@ -1,0 +1,16 @@
+{
+  "name": "wbb-contracts",
+  "version": "0.1.0",
+  "description": "On-chain soul layer for a living C. elegans on BNB Chain",
+  "license": "MIT",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:mainnet": "hardhat run scripts/deploy.js --network bscMainnet"
+  },
+  "devDependencies": {
+    "hardhat": "^2.22.10",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5"
+  }
+}

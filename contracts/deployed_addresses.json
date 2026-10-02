@@ -1,0 +1,26 @@
+{
+  "network": "bscMainnet",
+  "chainId": 56,
+  "deployer": "0xbA7ba75Fe0Daf4CA8890c110660Bb41B9255C7ac",
+  "WormGenome": {
+    "address": "0xb11a96464ea974cb34ddfbec862249d8f8bb007f",
+    "txHash": "0x013f60bfb2efdb12b8bb399f9d09ef34885facb07b9fdeb03133c1b975fb69b0",
+    "blockNumber": 125465763,
+    "gasUsed": 159814
+  },
+  "WormHeartbeat": {
+    "address": "0x3dEC2612c7603904f6faf1B4D0937A4668a20eC2",
+    "txHash": "0x1560b9e35095c2f0be1d6dc320af3af3cc63c725453967ad64dbbfefaacec19b",
+    "blockNumber": 125211064,
+    "gasUsed": 546175
+  },
+  "WormBrain": {
+    "address": "0xC33B1a8ad0edC91ac7eC7c09326777CF3Dfaf24B",
+    "txHash": "0xb9dcf38fb59102b955e1269b44e87ecf720311f456f4e9006979d06037220196",
+    "blockNumber": 125242416,
+    "gasUsed": 2013088,
+    "seedTxHash": "0x3f7199edc870d6faf2e8503eda1fe5a6d8c0b11b1d186a035f6c29eaf62e5ed1",
+    "seedGasUsed": 8781360,
+    "connRoot": "0xf12410a5de0073148d04c237c2da534d96d997f6812a3d896a6e4cbed9b4a177"
+  }
+}

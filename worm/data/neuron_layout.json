@@ -1,0 +1,2422 @@
+{
+ "note": "Deterministic artistic approximation of C. elegans neuron anatomy; t=0 nose, t=1 tail; dv dorsoventral, lr laterolateral, body radii units.",
+ "seed": 20261002,
+ "neurons": [
+  {
+   "name": "ADAL",
+   "t": 0.0948,
+   "dv": -0.0876,
+   "lr": -0.019,
+   "size": 0.752,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADAR",
+   "t": 0.0741,
+   "dv": 0.3475,
+   "lr": 0.3336,
+   "size": 1.097,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADEL",
+   "t": 0.0011,
+   "dv": 0.4183,
+   "lr": -0.387,
+   "size": 0.92,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADER",
+   "t": 0.0355,
+   "dv": -0.2641,
+   "lr": 0.3578,
+   "size": 1.188,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADFL",
+   "t": 0.0974,
+   "dv": -0.406,
+   "lr": -0.0761,
+   "size": 1.225,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADFR",
+   "t": 0.0039,
+   "dv": 0.2551,
+   "lr": 0.0957,
+   "size": 1.066,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADLL",
+   "t": 0.098,
+   "dv": -0.3694,
+   "lr": -0.1516,
+   "size": 0.791,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ADLR",
+   "t": 0.0134,
+   "dv": -0.2088,
+   "lr": 0.4257,
+   "size": 1.114,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AFDL",
+   "t": 0.0184,
+   "dv": -0.0601,
+   "lr": -0.344,
+   "size": 1.299,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AFDR",
+   "t": 0.0983,
+   "dv": -0.148,
+   "lr": 0.0882,
+   "size": 0.824,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIAL",
+   "t": 0.0857,
+   "dv": -0.3051,
+   "lr": -0.0602,
+   "size": 1.078,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIAR",
+   "t": 0.1007,
+   "dv": -0.0913,
+   "lr": 0.2325,
+   "size": 1.112,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIBL",
+   "t": 0.1579,
+   "dv": -0.2978,
+   "lr": -0.0774,
+   "size": 1.008,
+   "cls": "ring"
+  },
+  {
+   "name": "AIBR",
+   "t": 0.0759,
+   "dv": 0.1565,
+   "lr": 0.0849,
+   "size": 0.727,
+   "cls": "ring"
+  },
+  {
+   "name": "AIML",
+   "t": 0.062,
+   "dv": 0.017,
+   "lr": -0.3015,
+   "size": 1.246,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIMR",
+   "t": 0.0033,
+   "dv": -0.5233,
+   "lr": 0.0986,
+   "size": 1.189,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AINL",
+   "t": 0.0243,
+   "dv": 0.1157,
+   "lr": -0.4089,
+   "size": 0.963,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AINR",
+   "t": 0.0379,
+   "dv": 0.3531,
+   "lr": 0.2775,
+   "size": 1.185,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIYL",
+   "t": 0.1026,
+   "dv": 0.3575,
+   "lr": -0.0518,
+   "size": 1.255,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIYR",
+   "t": 0.0802,
+   "dv": 0.1822,
+   "lr": 0.2092,
+   "size": 0.766,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIZL",
+   "t": 0.1004,
+   "dv": 0.1088,
+   "lr": -0.346,
+   "size": 0.978,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AIZR",
+   "t": 0.0796,
+   "dv": 0.1855,
+   "lr": 0.2361,
+   "size": 1.017,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ALA",
+   "t": 0.0429,
+   "dv": -0.0285,
+   "lr": 0.3594,
+   "size": 0.792,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ALML",
+   "t": 0.0932,
+   "dv": 0.4243,
+   "lr": -0.3917,
+   "size": 0.786,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ALMR",
+   "t": 0.0113,
+   "dv": -0.045,
+   "lr": 0.1679,
+   "size": 0.723,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ALNL",
+   "t": 0.0552,
+   "dv": 0.4995,
+   "lr": -0.3295,
+   "size": 0.926,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ALNR",
+   "t": 0.0812,
+   "dv": -0.2011,
+   "lr": 0.4067,
+   "size": 1.158,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AQR",
+   "t": 0.1188,
+   "dv": 0.4142,
+   "lr": 0.193,
+   "size": 0.827,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS1",
+   "t": 0.0124,
+   "dv": -0.0489,
+   "lr": 0.0212,
+   "size": 0.711,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS10",
+   "t": 0.068,
+   "dv": -0.5313,
+   "lr": 0.4281,
+   "size": 0.985,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS11",
+   "t": 0.0096,
+   "dv": 0.4074,
+   "lr": -0.2478,
+   "size": 1.019,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS2",
+   "t": 0.0534,
+   "dv": 0.5023,
+   "lr": -0.0971,
+   "size": 1.289,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS3",
+   "t": 0.0188,
+   "dv": -0.5355,
+   "lr": -0.0948,
+   "size": 0.856,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS4",
+   "t": 0.0139,
+   "dv": -0.2547,
+   "lr": 0.1707,
+   "size": 1.267,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS5",
+   "t": 0.1113,
+   "dv": -0.3115,
+   "lr": 0.1029,
+   "size": 0.928,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS6",
+   "t": 0.045,
+   "dv": 0.3489,
+   "lr": -0.2165,
+   "size": 1.019,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS7",
+   "t": 0.0002,
+   "dv": -0.4101,
+   "lr": 0.0921,
+   "size": 0.727,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS8",
+   "t": 0.1166,
+   "dv": -0.4988,
+   "lr": -0.0226,
+   "size": 0.997,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AS9",
+   "t": 0.0898,
+   "dv": -0.3094,
+   "lr": 0.0743,
+   "size": 0.834,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASEL",
+   "t": 0.0135,
+   "dv": -0.2863,
+   "lr": -0.1495,
+   "size": 0.704,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASER",
+   "t": 0.0573,
+   "dv": -0.5355,
+   "lr": 0.3004,
+   "size": 1.066,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASGL",
+   "t": 0.0136,
+   "dv": -0.3708,
+   "lr": -0.2415,
+   "size": 1.299,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASGR",
+   "t": 0.065,
+   "dv": 0.2496,
+   "lr": 0.3064,
+   "size": 0.936,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASHL",
+   "t": 0.0163,
+   "dv": 0.2319,
+   "lr": -0.23,
+   "size": 1.277,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASHR",
+   "t": 0.0883,
+   "dv": -0.434,
+   "lr": 0.3051,
+   "size": 0.716,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASIL",
+   "t": 0.0676,
+   "dv": 0.5102,
+   "lr": -0.3219,
+   "size": 0.837,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASIR",
+   "t": 0.1086,
+   "dv": -0.2033,
+   "lr": 0.3367,
+   "size": 1.046,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASJL",
+   "t": 0.1092,
+   "dv": 0.3854,
+   "lr": -0.3627,
+   "size": 0.857,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASJR",
+   "t": 0.0069,
+   "dv": -0.1375,
+   "lr": 0.1152,
+   "size": 1.038,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASKL",
+   "t": 0.117,
+   "dv": -0.4057,
+   "lr": -0.0277,
+   "size": 0.85,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "ASKR",
+   "t": 0.0639,
+   "dv": 0.2532,
+   "lr": 0.0422,
+   "size": 1.178,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AUAL",
+   "t": 0.3907,
+   "dv": 0.3404,
+   "lr": -0.3509,
+   "size": 0.79,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AUAR",
+   "t": 0.2849,
+   "dv": 0.4355,
+   "lr": 0.1499,
+   "size": 1.217,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVAL",
+   "t": 0.0877,
+   "dv": 0.4126,
+   "lr": -0.1233,
+   "size": 0.945,
+   "cls": "ring"
+  },
+  {
+   "name": "AVAR",
+   "t": 0.1604,
+   "dv": 0.3909,
+   "lr": 0.4147,
+   "size": 1.095,
+   "cls": "ring"
+  },
+  {
+   "name": "AVBL",
+   "t": 0.0669,
+   "dv": -0.397,
+   "lr": -0.108,
+   "size": 1.06,
+   "cls": "ring"
+  },
+  {
+   "name": "AVBR",
+   "t": 0.1004,
+   "dv": -0.2573,
+   "lr": 0.0896,
+   "size": 0.791,
+   "cls": "ring"
+  },
+  {
+   "name": "AVDL",
+   "t": 0.3365,
+   "dv": -0.0451,
+   "lr": -0.4197,
+   "size": 1.169,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVDR",
+   "t": 0.6227,
+   "dv": -0.4516,
+   "lr": 0.4432,
+   "size": 0.779,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVEL",
+   "t": 0.5,
+   "dv": 0.0439,
+   "lr": -0.37,
+   "size": 1.119,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVER",
+   "t": 0.3364,
+   "dv": -0.0257,
+   "lr": 0.2517,
+   "size": 0.751,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVFL",
+   "t": 0.73,
+   "dv": 0.544,
+   "lr": -0.1501,
+   "size": 0.767,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVFR",
+   "t": 0.2084,
+   "dv": 0.126,
+   "lr": 0.31,
+   "size": 1.0,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVG",
+   "t": 0.4494,
+   "dv": -0.4329,
+   "lr": -0.1176,
+   "size": 1.121,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVHL",
+   "t": 0.3014,
+   "dv": -0.5125,
+   "lr": -0.0593,
+   "size": 1.234,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVHR",
+   "t": 0.2134,
+   "dv": 0.088,
+   "lr": 0.2001,
+   "size": 0.717,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVJL",
+   "t": 0.3019,
+   "dv": 0.4616,
+   "lr": -0.2427,
+   "size": 1.176,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVJR",
+   "t": 0.4381,
+   "dv": 0.0882,
+   "lr": 0.3858,
+   "size": 1.132,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVKL",
+   "t": 0.5417,
+   "dv": -0.2729,
+   "lr": -0.1531,
+   "size": 0.835,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVKR",
+   "t": 0.6855,
+   "dv": 0.1837,
+   "lr": 0.0357,
+   "size": 0.968,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVL",
+   "t": 0.5635,
+   "dv": -0.4408,
+   "lr": -0.241,
+   "size": 1.158,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AVM",
+   "t": 0.654,
+   "dv": -0.0635,
+   "lr": 0.1586,
+   "size": 1.064,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "AWAL",
+   "t": 0.0222,
+   "dv": 0.2139,
+   "lr": -0.1941,
+   "size": 0.985,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AWAR",
+   "t": 0.0817,
+   "dv": 0.5474,
+   "lr": 0.0148,
+   "size": 0.821,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AWBL",
+   "t": 0.1105,
+   "dv": -0.3832,
+   "lr": -0.3443,
+   "size": 1.238,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AWBR",
+   "t": 0.0305,
+   "dv": -0.319,
+   "lr": 0.0172,
+   "size": 0.839,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AWCL",
+   "t": 0.0383,
+   "dv": -0.1431,
+   "lr": -0.046,
+   "size": 0.782,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "AWCR",
+   "t": 0.0504,
+   "dv": -0.0832,
+   "lr": 0.0605,
+   "size": 0.975,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "BAGL",
+   "t": 0.0197,
+   "dv": 0.1561,
+   "lr": -0.3499,
+   "size": 0.899,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "BAGR",
+   "t": 0.0884,
+   "dv": 0.3261,
+   "lr": 0.3463,
+   "size": 0.947,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "BDUL",
+   "t": 0.035,
+   "dv": 0.1564,
+   "lr": -0.4374,
+   "size": 1.012,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "BDUR",
+   "t": 0.0879,
+   "dv": -0.0145,
+   "lr": 0.2884,
+   "size": 1.251,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "CANL",
+   "t": 0.2336,
+   "dv": -0.1859,
+   "lr": -0.2085,
+   "size": 0.721,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "CANR",
+   "t": 0.3672,
+   "dv": -0.0895,
+   "lr": 0.0137,
+   "size": 1.03,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "CEPDL",
+   "t": 0.5627,
+   "dv": 0.3352,
+   "lr": -0.0001,
+   "size": 0.739,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "CEPDR",
+   "t": 0.5096,
+   "dv": 0.1945,
+   "lr": 0.449,
+   "size": 0.725,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "CEPVL",
+   "t": 0.5725,
+   "dv": 0.4963,
+   "lr": -0.2137,
+   "size": 1.09,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "CEPVR",
+   "t": 0.4962,
+   "dv": 0.2055,
+   "lr": 0.3099,
+   "size": 1.202,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "DA1",
+   "t": 0.47,
+   "dv": -0.0507,
+   "lr": -0.436,
+   "size": 0.792,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA2",
+   "t": 0.6078,
+   "dv": 0.532,
+   "lr": -0.3865,
+   "size": 1.293,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA3",
+   "t": 0.2134,
+   "dv": -0.1069,
+   "lr": 0.0503,
+   "size": 0.77,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA4",
+   "t": 0.4131,
+   "dv": 0.4186,
+   "lr": 0.174,
+   "size": 0.856,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA5",
+   "t": 0.625,
+   "dv": 0.4831,
+   "lr": -0.2912,
+   "size": 0.911,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA6",
+   "t": 0.4832,
+   "dv": 0.1832,
+   "lr": 0.3115,
+   "size": 1.024,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA7",
+   "t": 0.4332,
+   "dv": 0.5037,
+   "lr": -0.1083,
+   "size": 0.884,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA8",
+   "t": 0.2009,
+   "dv": -0.4458,
+   "lr": -0.19,
+   "size": 0.804,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DA9",
+   "t": 0.5208,
+   "dv": -0.5033,
+   "lr": 0.4054,
+   "size": 1.253,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB1",
+   "t": 0.1969,
+   "dv": 0.1994,
+   "lr": -0.3484,
+   "size": 0.919,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB2",
+   "t": 0.6026,
+   "dv": 0.4799,
+   "lr": 0.134,
+   "size": 0.871,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB3",
+   "t": 0.2489,
+   "dv": 0.4412,
+   "lr": -0.1255,
+   "size": 0.741,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB4",
+   "t": 0.2762,
+   "dv": -0.4789,
+   "lr": 0.139,
+   "size": 0.821,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB5",
+   "t": 0.51,
+   "dv": 0.2174,
+   "lr": -0.3718,
+   "size": 0.855,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB6",
+   "t": 0.4704,
+   "dv": -0.0587,
+   "lr": -0.4489,
+   "size": 0.883,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DB7",
+   "t": 0.3335,
+   "dv": -0.4027,
+   "lr": -0.1196,
+   "size": 0.877,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD1",
+   "t": 0.6185,
+   "dv": -0.4644,
+   "lr": 0.0737,
+   "size": 1.16,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD2",
+   "t": 0.2307,
+   "dv": 0.2618,
+   "lr": 0.0167,
+   "size": 1.17,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD3",
+   "t": 0.2579,
+   "dv": -0.2066,
+   "lr": -0.2037,
+   "size": 1.004,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD4",
+   "t": 0.3709,
+   "dv": 0.0089,
+   "lr": 0.0705,
+   "size": 0.952,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD5",
+   "t": 0.3457,
+   "dv": 0.506,
+   "lr": -0.0318,
+   "size": 1.109,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DD6",
+   "t": 0.6311,
+   "dv": 0.0065,
+   "lr": 0.2523,
+   "size": 1.182,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "DVA",
+   "t": 0.2558,
+   "dv": 0.2661,
+   "lr": -0.1917,
+   "size": 0.722,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "DVB",
+   "t": 0.6214,
+   "dv": 0.4599,
+   "lr": 0.0848,
+   "size": 1.199,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "DVC",
+   "t": 0.6123,
+   "dv": -0.5167,
+   "lr": -0.2501,
+   "size": 1.222,
+   "cls": "midbody"
+  },
+  {
+   "name": "FLPL",
+   "t": 0.6393,
+   "dv": 0.1594,
+   "lr": -0.1846,
+   "size": 1.239,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "FLPR",
+   "t": 0.7916,
+   "dv": -0.1122,
+   "lr": 0.0158,
+   "size": 0.854,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "HSNL",
+   "t": 0.5437,
+   "dv": -0.1783,
+   "lr": -0.2272,
+   "size": 1.257,
+   "cls": "midbody"
+  },
+  {
+   "name": "HSNR",
+   "t": 0.4851,
+   "dv": 0.2283,
+   "lr": 0.4063,
+   "size": 1.112,
+   "cls": "midbody"
+  },
+  {
+   "name": "I1L",
+   "t": 0.6524,
+   "dv": -0.2682,
+   "lr": -0.2874,
+   "size": 0.772,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I1R",
+   "t": 0.6526,
+   "dv": 0.0271,
+   "lr": 0.2076,
+   "size": 1.16,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I2L",
+   "t": 0.4551,
+   "dv": 0.176,
+   "lr": -0.1417,
+   "size": 1.155,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I2R",
+   "t": 0.7215,
+   "dv": -0.168,
+   "lr": 0.3004,
+   "size": 1.091,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I3",
+   "t": 0.6852,
+   "dv": 0.2071,
+   "lr": 0.1084,
+   "size": 0.771,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I4",
+   "t": 0.6515,
+   "dv": 0.2489,
+   "lr": 0.2358,
+   "size": 1.06,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I5",
+   "t": 0.4997,
+   "dv": -0.0181,
+   "lr": -0.0332,
+   "size": 0.89,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "I6",
+   "t": 0.4637,
+   "dv": -0.5067,
+   "lr": -0.1751,
+   "size": 0.949,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1DL",
+   "t": 0.2381,
+   "dv": 0.009,
+   "lr": -0.208,
+   "size": 1.074,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1DR",
+   "t": 0.7289,
+   "dv": 0.1024,
+   "lr": 0.4486,
+   "size": 1.164,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1L",
+   "t": 0.534,
+   "dv": -0.3507,
+   "lr": -0.0158,
+   "size": 1.169,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1R",
+   "t": 0.5117,
+   "dv": -0.0532,
+   "lr": 0.3317,
+   "size": 0.767,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1VL",
+   "t": 0.6928,
+   "dv": 0.5474,
+   "lr": -0.1158,
+   "size": 0.99,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL1VR",
+   "t": 0.6091,
+   "dv": -0.3564,
+   "lr": 0.4211,
+   "size": 0.745,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2DL",
+   "t": 0.2522,
+   "dv": -0.0821,
+   "lr": -0.2958,
+   "size": 0.949,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2DR",
+   "t": 0.3355,
+   "dv": 0.0956,
+   "lr": 0.1052,
+   "size": 0.974,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2L",
+   "t": 0.5524,
+   "dv": 0.2956,
+   "lr": -0.0586,
+   "size": 0.909,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2R",
+   "t": 0.1899,
+   "dv": -0.3291,
+   "lr": 0.2046,
+   "size": 1.176,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2VL",
+   "t": 0.7342,
+   "dv": 0.3017,
+   "lr": -0.2609,
+   "size": 1.247,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "IL2VR",
+   "t": 0.6877,
+   "dv": -0.0754,
+   "lr": 0.1319,
+   "size": 0.876,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "LUAL",
+   "t": 0.7695,
+   "dv": -0.5036,
+   "lr": -0.3033,
+   "size": 1.242,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "LUAR",
+   "t": 0.2159,
+   "dv": -0.3733,
+   "lr": 0.3791,
+   "size": 0.927,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M1",
+   "t": 0.4051,
+   "dv": 0.0512,
+   "lr": -0.3949,
+   "size": 0.738,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M2L",
+   "t": 0.2866,
+   "dv": -0.0972,
+   "lr": -0.0056,
+   "size": 0.794,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M2R",
+   "t": 0.7311,
+   "dv": -0.134,
+   "lr": 0.0895,
+   "size": 0.97,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M3L",
+   "t": 0.1807,
+   "dv": 0.3855,
+   "lr": -0.0614,
+   "size": 1.015,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M3R",
+   "t": 0.2438,
+   "dv": -0.0356,
+   "lr": 0.2889,
+   "size": 1.02,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M4",
+   "t": 0.2178,
+   "dv": -0.281,
+   "lr": 0.0722,
+   "size": 1.113,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "M5",
+   "t": 0.3259,
+   "dv": 0.5425,
+   "lr": 0.284,
+   "size": 1.245,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "MCL",
+   "t": 0.7497,
+   "dv": 0.0158,
+   "lr": -0.2937,
+   "size": 1.19,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "MCR",
+   "t": 0.4172,
+   "dv": -0.0452,
+   "lr": 0.4253,
+   "size": 1.248,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "MI",
+   "t": 0.7038,
+   "dv": -0.1403,
+   "lr": 0.3103,
+   "size": 0.875,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "NSML",
+   "t": 0.6856,
+   "dv": 0.0201,
+   "lr": -0.1867,
+   "size": 1.15,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "NSMR",
+   "t": 0.1951,
+   "dv": 0.3966,
+   "lr": 0.1993,
+   "size": 0.934,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "OLLL",
+   "t": 0.188,
+   "dv": -0.4308,
+   "lr": -0.4391,
+   "size": 0.765,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "OLLR",
+   "t": 0.1874,
+   "dv": 0.4873,
+   "lr": 0.1765,
+   "size": 1.004,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "OLQDL",
+   "t": 0.0243,
+   "dv": -0.3825,
+   "lr": -0.2449,
+   "size": 1.143,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "OLQDR",
+   "t": 0.1137,
+   "dv": 0.4575,
+   "lr": 0.2145,
+   "size": 0.797,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "OLQVL",
+   "t": 0.0124,
+   "dv": -0.3393,
+   "lr": -0.2815,
+   "size": 0.714,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "OLQVR",
+   "t": 0.0885,
+   "dv": -0.3107,
+   "lr": 0.113,
+   "size": 0.866,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "PDA",
+   "t": 0.1716,
+   "dv": -0.1206,
+   "lr": -0.128,
+   "size": 0.885,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PDB",
+   "t": 0.2346,
+   "dv": 0.0438,
+   "lr": -0.1709,
+   "size": 0.717,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PDEL",
+   "t": 0.381,
+   "dv": 0.4556,
+   "lr": -0.0831,
+   "size": 1.016,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PDER",
+   "t": 0.5758,
+   "dv": 0.1724,
+   "lr": 0.119,
+   "size": 1.286,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHAL",
+   "t": 0.4459,
+   "dv": -0.3252,
+   "lr": -0.2098,
+   "size": 0.846,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHAR",
+   "t": 0.6013,
+   "dv": 0.2714,
+   "lr": 0.1236,
+   "size": 0.807,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHBL",
+   "t": 0.485,
+   "dv": 0.2838,
+   "lr": -0.1265,
+   "size": 0.76,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHBR",
+   "t": 0.1975,
+   "dv": -0.4735,
+   "lr": 0.1709,
+   "size": 0.96,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHCL",
+   "t": 0.4783,
+   "dv": 0.352,
+   "lr": -0.4057,
+   "size": 1.131,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PHCR",
+   "t": 0.273,
+   "dv": 0.251,
+   "lr": 0.2761,
+   "size": 1.245,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PLML",
+   "t": 0.62,
+   "dv": -0.4808,
+   "lr": -0.046,
+   "size": 1.139,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PLMR",
+   "t": 0.62,
+   "dv": -0.3695,
+   "lr": 0.2376,
+   "size": 0.927,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PLNL",
+   "t": 0.7097,
+   "dv": 0.3852,
+   "lr": -0.1325,
+   "size": 1.054,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PLNR",
+   "t": 0.3167,
+   "dv": -0.3427,
+   "lr": 0.2016,
+   "size": 0.722,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "PQR",
+   "t": 0.6906,
+   "dv": -0.4825,
+   "lr": 0.1896,
+   "size": 0.922,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVCL",
+   "t": 0.62,
+   "dv": 0.0002,
+   "lr": -0.0347,
+   "size": 1.057,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVCR",
+   "t": 0.62,
+   "dv": 0.0088,
+   "lr": 0.0091,
+   "size": 0.968,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVDL",
+   "t": 0.62,
+   "dv": -0.0611,
+   "lr": -0.3724,
+   "size": 1.234,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVDR",
+   "t": 0.62,
+   "dv": -0.0159,
+   "lr": 0.1722,
+   "size": 0.765,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVM",
+   "t": 0.62,
+   "dv": 0.0667,
+   "lr": 0.2961,
+   "size": 1.219,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVNL",
+   "t": 0.62,
+   "dv": -0.4372,
+   "lr": -0.4236,
+   "size": 1.226,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVNR",
+   "t": 0.62,
+   "dv": -0.3214,
+   "lr": 0.1188,
+   "size": 0.857,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVPL",
+   "t": 0.62,
+   "dv": 0.0332,
+   "lr": -0.1875,
+   "size": 1.099,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVPR",
+   "t": 0.62,
+   "dv": -0.4034,
+   "lr": 0.1139,
+   "size": 1.005,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVQL",
+   "t": 0.62,
+   "dv": -0.3813,
+   "lr": -0.3611,
+   "size": 1.04,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVQR",
+   "t": 0.62,
+   "dv": -0.3268,
+   "lr": 0.24,
+   "size": 0.737,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVR",
+   "t": 0.8726,
+   "dv": 0.4199,
+   "lr": 0.1757,
+   "size": 1.09,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVT",
+   "t": 0.62,
+   "dv": -0.2816,
+   "lr": 0.3066,
+   "size": 0.771,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVWL",
+   "t": 0.62,
+   "dv": 0.3061,
+   "lr": -0.1194,
+   "size": 1.266,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "PVWR",
+   "t": 0.62,
+   "dv": -0.0653,
+   "lr": 0.0494,
+   "size": 0.905,
+   "cls": "postdeirid"
+  },
+  {
+   "name": "RIAL",
+   "t": 0.1178,
+   "dv": 0.1245,
+   "lr": -0.406,
+   "size": 1.125,
+   "cls": "ring"
+  },
+  {
+   "name": "RIAR",
+   "t": 0.1024,
+   "dv": -0.1629,
+   "lr": 0.2601,
+   "size": 0.724,
+   "cls": "ring"
+  },
+  {
+   "name": "RIBL",
+   "t": 0.1119,
+   "dv": -0.0889,
+   "lr": -0.1673,
+   "size": 0.966,
+   "cls": "ring"
+  },
+  {
+   "name": "RIBR",
+   "t": 0.0899,
+   "dv": 0.2969,
+   "lr": 0.3179,
+   "size": 0.729,
+   "cls": "ring"
+  },
+  {
+   "name": "RICL",
+   "t": 0.0914,
+   "dv": -0.4774,
+   "lr": -0.1311,
+   "size": 1.168,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RICR",
+   "t": 0.0791,
+   "dv": -0.1075,
+   "lr": 0.176,
+   "size": 1.139,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RID",
+   "t": 0.0019,
+   "dv": -0.5446,
+   "lr": -0.2458,
+   "size": 0.965,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIFL",
+   "t": 0.1538,
+   "dv": -0.1538,
+   "lr": -0.4129,
+   "size": 1.199,
+   "cls": "ring"
+  },
+  {
+   "name": "RIFR",
+   "t": 0.1551,
+   "dv": -0.3197,
+   "lr": 0.3046,
+   "size": 0.884,
+   "cls": "ring"
+  },
+  {
+   "name": "RIGL",
+   "t": 0.1527,
+   "dv": 0.3661,
+   "lr": -0.2792,
+   "size": 0.903,
+   "cls": "ring"
+  },
+  {
+   "name": "RIGR",
+   "t": 0.1525,
+   "dv": 0.0963,
+   "lr": 0.2942,
+   "size": 0.817,
+   "cls": "ring"
+  },
+  {
+   "name": "RIH",
+   "t": 0.0169,
+   "dv": 0.044,
+   "lr": 0.2057,
+   "size": 1.036,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIML",
+   "t": 0.0439,
+   "dv": -0.2917,
+   "lr": -0.2117,
+   "size": 1.062,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIMR",
+   "t": 0.1015,
+   "dv": 0.2647,
+   "lr": 0.0468,
+   "size": 1.015,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIPL",
+   "t": 0.0132,
+   "dv": 0.0325,
+   "lr": -0.3229,
+   "size": 0.923,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIPR",
+   "t": 0.0196,
+   "dv": 0.4681,
+   "lr": 0.168,
+   "size": 0.749,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIR",
+   "t": 0.0754,
+   "dv": -0.13,
+   "lr": 0.2589,
+   "size": 0.94,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIS",
+   "t": 0.1328,
+   "dv": -0.0828,
+   "lr": 0.0292,
+   "size": 0.931,
+   "cls": "ring"
+  },
+  {
+   "name": "RIVL",
+   "t": 0.1034,
+   "dv": 0.1819,
+   "lr": -0.164,
+   "size": 1.118,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RIVR",
+   "t": 0.0251,
+   "dv": -0.4102,
+   "lr": 0.0934,
+   "size": 0.933,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDDL",
+   "t": 0.0849,
+   "dv": -0.5462,
+   "lr": -0.0809,
+   "size": 1.154,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDDR",
+   "t": 0.008,
+   "dv": 0.5083,
+   "lr": 0.1691,
+   "size": 0.812,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDL",
+   "t": 0.0693,
+   "dv": -0.0154,
+   "lr": -0.0729,
+   "size": 1.268,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDR",
+   "t": 0.1169,
+   "dv": -0.4371,
+   "lr": 0.3185,
+   "size": 0.768,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDVL",
+   "t": 0.0658,
+   "dv": 0.2605,
+   "lr": -0.1058,
+   "size": 0.711,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMDVR",
+   "t": 0.0424,
+   "dv": -0.4084,
+   "lr": 0.1226,
+   "size": 1.149,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMED",
+   "t": 0.1,
+   "dv": 0.1308,
+   "lr": -0.3554,
+   "size": 1.283,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMEL",
+   "t": 0.0599,
+   "dv": -0.3555,
+   "lr": -0.114,
+   "size": 1.163,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMER",
+   "t": 0.0202,
+   "dv": 0.4546,
+   "lr": 0.3013,
+   "size": 1.2,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMEV",
+   "t": 0.0937,
+   "dv": 0.5223,
+   "lr": 0.0097,
+   "size": 1.171,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMFL",
+   "t": 0.1195,
+   "dv": 0.2167,
+   "lr": -0.2469,
+   "size": 0.992,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMFR",
+   "t": 0.116,
+   "dv": -0.4765,
+   "lr": 0.008,
+   "size": 0.778,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMGL",
+   "t": 0.1021,
+   "dv": 0.2423,
+   "lr": -0.3156,
+   "size": 1.2,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMGR",
+   "t": 0.006,
+   "dv": -0.322,
+   "lr": 0.35,
+   "size": 1.132,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMHL",
+   "t": 0.0005,
+   "dv": 0.4107,
+   "lr": -0.243,
+   "size": 1.127,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "RMHR",
+   "t": 0.1174,
+   "dv": -0.0931,
+   "lr": 0.0344,
+   "size": 1.039,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "SAADL",
+   "t": 0.5559,
+   "dv": 0.3886,
+   "lr": -0.2885,
+   "size": 0.93,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SAADR",
+   "t": 0.7036,
+   "dv": 0.2236,
+   "lr": 0.0793,
+   "size": 1.225,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SAAVL",
+   "t": 0.4989,
+   "dv": 0.1272,
+   "lr": -0.3825,
+   "size": 1.068,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SAAVR",
+   "t": 0.3668,
+   "dv": 0.2538,
+   "lr": 0.0072,
+   "size": 1.1,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SABD",
+   "t": 0.4953,
+   "dv": -0.5203,
+   "lr": 0.3471,
+   "size": 1.247,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SABVL",
+   "t": 0.7378,
+   "dv": -0.0358,
+   "lr": -0.118,
+   "size": 1.224,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SABVR",
+   "t": 0.766,
+   "dv": 0.4165,
+   "lr": 0.2091,
+   "size": 1.145,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SDQL",
+   "t": 0.6655,
+   "dv": -0.3535,
+   "lr": -0.1971,
+   "size": 1.166,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SDQR",
+   "t": 0.3401,
+   "dv": 0.2617,
+   "lr": 0.1653,
+   "size": 0.713,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIADL",
+   "t": 0.3572,
+   "dv": 0.1599,
+   "lr": -0.07,
+   "size": 1.276,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIADR",
+   "t": 0.3449,
+   "dv": -0.2331,
+   "lr": 0.3365,
+   "size": 1.108,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIAVL",
+   "t": 0.4102,
+   "dv": 0.1302,
+   "lr": -0.3005,
+   "size": 0.83,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIAVR",
+   "t": 0.3484,
+   "dv": 0.2808,
+   "lr": 0.1817,
+   "size": 0.91,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIBDL",
+   "t": 0.3041,
+   "dv": 0.1997,
+   "lr": -0.213,
+   "size": 0.769,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIBDR",
+   "t": 0.4253,
+   "dv": -0.3539,
+   "lr": 0.4134,
+   "size": 1.205,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIBVL",
+   "t": 0.4418,
+   "dv": -0.1972,
+   "lr": -0.3318,
+   "size": 1.109,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SIBVR",
+   "t": 0.1692,
+   "dv": 0.5253,
+   "lr": 0.1381,
+   "size": 0.947,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMBDL",
+   "t": 0.4062,
+   "dv": 0.4041,
+   "lr": -0.0326,
+   "size": 0.713,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMBDR",
+   "t": 0.5961,
+   "dv": 0.5316,
+   "lr": 0.2362,
+   "size": 1.079,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMBVL",
+   "t": 0.599,
+   "dv": -0.0909,
+   "lr": -0.21,
+   "size": 0.748,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMBVR",
+   "t": 0.4305,
+   "dv": 0.0222,
+   "lr": 0.4353,
+   "size": 0.739,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMDDL",
+   "t": 0.3755,
+   "dv": 0.1266,
+   "lr": -0.2921,
+   "size": 0.973,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMDDR",
+   "t": 0.2114,
+   "dv": 0.3873,
+   "lr": 0.0144,
+   "size": 0.709,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMDVL",
+   "t": 0.6806,
+   "dv": -0.2187,
+   "lr": -0.2366,
+   "size": 1.127,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "SMDVR",
+   "t": 0.2503,
+   "dv": -0.2175,
+   "lr": 0.3953,
+   "size": 1.017,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "URADL",
+   "t": 0.9407,
+   "dv": 0.3013,
+   "lr": -0.014,
+   "size": 0.93,
+   "cls": "tail"
+  },
+  {
+   "name": "URADR",
+   "t": 0.9779,
+   "dv": 0.0543,
+   "lr": 0.1108,
+   "size": 1.129,
+   "cls": "tail"
+  },
+  {
+   "name": "URAVL",
+   "t": 0.8128,
+   "dv": 0.3422,
+   "lr": -0.4264,
+   "size": 1.154,
+   "cls": "tail"
+  },
+  {
+   "name": "URAVR",
+   "t": 0.9469,
+   "dv": -0.4164,
+   "lr": 0.2744,
+   "size": 1.061,
+   "cls": "tail"
+  },
+  {
+   "name": "URBL",
+   "t": 0.9115,
+   "dv": 0.3142,
+   "lr": -0.021,
+   "size": 0.949,
+   "cls": "tail"
+  },
+  {
+   "name": "URBR",
+   "t": 0.8254,
+   "dv": -0.4883,
+   "lr": 0.4412,
+   "size": 1.056,
+   "cls": "tail"
+  },
+  {
+   "name": "URXL",
+   "t": 0.019,
+   "dv": -0.5353,
+   "lr": -0.3066,
+   "size": 0.91,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "URXR",
+   "t": 0.0084,
+   "dv": -0.035,
+   "lr": 0.32,
+   "size": 1.134,
+   "cls": "sensor_head"
+  },
+  {
+   "name": "URYDL",
+   "t": 0.5858,
+   "dv": 0.3546,
+   "lr": -0.2948,
+   "size": 1.01,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "URYDR",
+   "t": 0.4846,
+   "dv": -0.3716,
+   "lr": 0.0626,
+   "size": 1.043,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "URYVL",
+   "t": 0.2855,
+   "dv": -0.4387,
+   "lr": -0.2992,
+   "size": 1.138,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "URYVR",
+   "t": 0.754,
+   "dv": -0.1538,
+   "lr": 0.2888,
+   "size": 1.173,
+   "cls": "cord_misc"
+  },
+  {
+   "name": "VA1",
+   "t": 0.6133,
+   "dv": -0.0901,
+   "lr": 0.4112,
+   "size": 1.102,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA10",
+   "t": 0.1848,
+   "dv": 0.1837,
+   "lr": 0.1784,
+   "size": 0.897,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA11",
+   "t": 0.602,
+   "dv": -0.5016,
+   "lr": -0.2464,
+   "size": 0.77,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA12",
+   "t": 0.1872,
+   "dv": 0.2388,
+   "lr": 0.2322,
+   "size": 0.756,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA2",
+   "t": 0.2365,
+   "dv": -0.1158,
+   "lr": 0.0548,
+   "size": 0.855,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA3",
+   "t": 0.3597,
+   "dv": 0.3641,
+   "lr": -0.1746,
+   "size": 0.895,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA4",
+   "t": 0.2658,
+   "dv": 0.303,
+   "lr": 0.4198,
+   "size": 0.721,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA5",
+   "t": 0.2876,
+   "dv": -0.3877,
+   "lr": -0.0681,
+   "size": 1.131,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA6",
+   "t": 0.2598,
+   "dv": -0.5081,
+   "lr": -0.1797,
+   "size": 0.739,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA7",
+   "t": 0.2763,
+   "dv": 0.2321,
+   "lr": 0.4181,
+   "size": 0.846,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA8",
+   "t": 0.2365,
+   "dv": -0.2669,
+   "lr": 0.007,
+   "size": 1.261,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VA9",
+   "t": 0.3828,
+   "dv": -0.2464,
+   "lr": -0.4222,
+   "size": 0.738,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB1",
+   "t": 0.3773,
+   "dv": 0.159,
+   "lr": 0.1726,
+   "size": 0.909,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB10",
+   "t": 0.5792,
+   "dv": 0.2623,
+   "lr": -0.3267,
+   "size": 1.151,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB11",
+   "t": 0.5157,
+   "dv": -0.0214,
+   "lr": 0.4474,
+   "size": 0.734,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB2",
+   "t": 0.2707,
+   "dv": -0.2683,
+   "lr": 0.2736,
+   "size": 1.197,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB3",
+   "t": 0.4396,
+   "dv": -0.3642,
+   "lr": 0.3021,
+   "size": 0.939,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB4",
+   "t": 0.4349,
+   "dv": 0.0321,
+   "lr": -0.4064,
+   "size": 1.166,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB5",
+   "t": 0.257,
+   "dv": 0.4099,
+   "lr": -0.3263,
+   "size": 0.884,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB6",
+   "t": 0.5069,
+   "dv": -0.4429,
+   "lr": 0.3479,
+   "size": 1.265,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB7",
+   "t": 0.3826,
+   "dv": -0.0848,
+   "lr": 0.1101,
+   "size": 1.082,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB8",
+   "t": 0.3914,
+   "dv": 0.3948,
+   "lr": -0.1108,
+   "size": 0.723,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VB9",
+   "t": 0.4123,
+   "dv": -0.2197,
+   "lr": 0.0089,
+   "size": 0.983,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VC1",
+   "t": 0.3537,
+   "dv": -0.3048,
+   "lr": -0.2588,
+   "size": 0.726,
+   "cls": "midbody"
+  },
+  {
+   "name": "VC2",
+   "t": 0.3561,
+   "dv": -0.0304,
+   "lr": 0.2872,
+   "size": 1.195,
+   "cls": "midbody"
+  },
+  {
+   "name": "VC3",
+   "t": 0.4737,
+   "dv": -0.3684,
+   "lr": 0.093,
+   "size": 1.282,
+   "cls": "midbody"
+  },
+  {
+   "name": "VC4",
+   "t": 0.6356,
+   "dv": 0.0692,
+   "lr": 0.2028,
+   "size": 1.239,
+   "cls": "midbody"
+  },
+  {
+   "name": "VC5",
+   "t": 0.4377,
+   "dv": -0.1533,
+   "lr": 0.2505,
+   "size": 1.054,
+   "cls": "midbody"
+  },
+  {
+   "name": "VC6",
+   "t": 0.4858,
+   "dv": -0.4289,
+   "lr": -0.031,
+   "size": 0.872,
+   "cls": "midbody"
+  },
+  {
+   "name": "VD1",
+   "t": 0.3399,
+   "dv": 0.0868,
+   "lr": -0.085,
+   "size": 0.726,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD10",
+   "t": 0.5661,
+   "dv": -0.5404,
+   "lr": -0.3026,
+   "size": 0.811,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD11",
+   "t": 0.3447,
+   "dv": 0.276,
+   "lr": -0.4238,
+   "size": 0.969,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD12",
+   "t": 0.3964,
+   "dv": -0.1397,
+   "lr": 0.4474,
+   "size": 1.225,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD13",
+   "t": 0.4975,
+   "dv": -0.0093,
+   "lr": 0.2063,
+   "size": 0.888,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD2",
+   "t": 0.3986,
+   "dv": -0.0957,
+   "lr": -0.3676,
+   "size": 1.14,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD3",
+   "t": 0.5126,
+   "dv": 0.0082,
+   "lr": 0.0678,
+   "size": 0.99,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD4",
+   "t": 0.182,
+   "dv": -0.5084,
+   "lr": -0.0748,
+   "size": 1.148,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD5",
+   "t": 0.5959,
+   "dv": 0.3815,
+   "lr": -0.0813,
+   "size": 1.124,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD6",
+   "t": 0.231,
+   "dv": -0.4089,
+   "lr": -0.329,
+   "size": 1.014,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD7",
+   "t": 0.626,
+   "dv": 0.5219,
+   "lr": -0.1981,
+   "size": 0.837,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD8",
+   "t": 0.264,
+   "dv": 0.4636,
+   "lr": -0.431,
+   "size": 1.171,
+   "cls": "cord_motor"
+  },
+  {
+   "name": "VD9",
+   "t": 0.256,
+   "dv": 0.2306,
+   "lr": -0.3892,
+   "size": 1.038,
+   "cls": "cord_motor"
+  }
+ ]
+}

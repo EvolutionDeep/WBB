@@ -1,0 +1,53 @@
+{
+  "source": "Cook et al. 2019 (via cect Cook2019Herm)",
+  "n_neurons": 302,
+  "n_edges_chem": 3709,
+  "n_edges_elec": 2196,
+  "density_pct": 5.64,
+  "mean_in_degree": 17.0,
+  "top10_hubs_outdegree": [
+    [
+      "AVAR",
+      70
+    ],
+    [
+      "DVA",
+      59
+    ],
+    [
+      "AVAL",
+      58
+    ],
+    [
+      "PVCR",
+      52
+    ],
+    [
+      "PVCL",
+      50
+    ],
+    [
+      "AVBL",
+      44
+    ],
+    [
+      "PVR",
+      44
+    ],
+    [
+      "AVBR",
+      43
+    ],
+    [
+      "AVDR",
+      41
+    ],
+    [
+      "ADEL",
+      40
+    ]
+  ],
+  "chem_weight_max": 75.0,
+  "elec_weight_max": 401.0,
+  "gas_estimate_note": "approx 5146 nonzero mul-adds per tick; fixed-point mul+add ~10 gas => ~0.1M gas/tick order of magnitude"
+}
