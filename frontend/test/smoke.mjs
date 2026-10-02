@@ -14,8 +14,8 @@ let fail = 0;
 const has = (cond, label) => { if (!cond) fail++; console.log(`${cond ? "OK  " : "FAIL"}  ${label}`); };
 const absent = (src, needle, label) => has(!src.toLowerCase().includes(needle.toLowerCase()), label);
 
-has(main.includes("0xe47f67b2e38AFA8a02e27A1D6F3694f33034aB18"), "READOUT address frozen in source");
-has(main.includes("0xb7b4C58E58f8496EA7f861c977c4c19698317b87"), "ADAPTER address frozen in source");
+has(main.includes("0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E"), "READOUT address frozen in source");
+has(main.includes("0xbe0C5117f740a9333614D806Bd50C3907186C6fD"), "ADAPTER address frozen in source");
 has(main.includes("1048576n"), "Q20 SCALE constant present");
 has(main.includes("HALTED"), "staleness rule surfaced (HALTED)");
 has(/read-?only/i.test(main), "page advertises read-only");

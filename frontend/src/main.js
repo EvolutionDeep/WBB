@@ -13,8 +13,8 @@ import { ethers } from "ethers";
  */
 
 // ---- frozen deployment coordinates (see contracts/deployed_addresses.json) ----
-const READOUT = "0xe47f67b2e38AFA8a02e27A1D6F3694f33034aB18";
-const ADAPTER = "0xb7b4C58E58f8496EA7f861c977c4c19698317b87";
+const READOUT = "0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E";
+const ADAPTER = "0xbe0C5117f740a9333614D806Bd50C3907186C6fD";
 const SCALE = 1048576n; // Q20
 
 // Public BSC RPC endpoints, tried in order on failure (read-only use only).
