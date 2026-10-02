@@ -88,6 +88,43 @@
   #dot.ok { background: var(--grn); box-shadow: 0 0 8px var(--grn); }
   #dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
   .ro { color: var(--amber); letter-spacing: 0.14em; }
+
+  /* 3D viewer: live connectome + on-chain voltages, read-only */
+  .viz-card { grid-column: 1 / -1; }
+  #viz-wrap {
+    position: relative; height: 470px; border: 1px solid rgba(53,224,255,0.16);
+    border-radius: 3px; background: #050a0e; overflow: hidden;
+  }
+  #viz-wrap canvas { width: 100% !important; height: 100% !important; border: 0; display: block; }
+  .viz-off {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    text-align: center; padding: 0 20px; font-size: 11px; letter-spacing: 0.14em;
+    color: rgba(148,205,226,0.6);
+  }
+  .viz-hud {
+    position: absolute; left: 8px; top: 8px; font-size: 10px; line-height: 1.8;
+    color: rgba(184,232,246,0.88); background: rgba(4,10,16,0.55);
+    border: 1px solid rgba(53,224,255,0.16); padding: 6px 9px; border-radius: 3px; pointer-events: none;
+  }
+  .viz-hud b { color: #cdeefc; font-weight: 400; }
+  .viz-hud .ok { color: var(--grn); }
+  .viz-hud .halt { color: var(--red); }
+  .viz-hud .err { color: var(--amber); }
+  .viz-tip {
+    position: absolute; right: 8px; bottom: 8px; font-size: 10px; color: #dff5ff;
+    background: rgba(4,10,16,0.72); border: 1px solid rgba(53,224,255,0.2);
+    padding: 4px 8px; border-radius: 3px; opacity: 0; transition: opacity 0.15s; pointer-events: none;
+  }
+  .viz-bar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-bottom: 8px; }
+  .viz-bar button {
+    background: rgba(53,224,255,0.08); color: #cdeefc; border: 1px solid rgba(53,224,255,0.28);
+    border-radius: 3px; font: inherit; font-size: 11px; letter-spacing: 0.12em;
+    padding: 4px 14px; cursor: pointer;
+  }
+  .viz-bar button:hover { border-color: var(--cy); color: #dff5ff; }
+  .viz-bar button.on { background: rgba(53,224,255,0.22); color: #dff5ff; border-color: var(--cy); }
+  .viz-legend { display: flex; gap: 14px; font-size: 10px; color: rgba(148,205,226,0.7); margin-top: 6px; }
+  .viz-legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
 </style>
 </head>
 <body>
@@ -100,6 +137,29 @@
 </header>
 
 <div class="grid">
+  <!-- 0. 3D VIEWER (live, read-only) -->
+  <section class="card viz-card" id="card-viz">
+    <h2><span class="num">00</span> · 3D worm — connectome and live membrane voltage</h2>
+    <div class="viz-bar">
+      <button id="viz-start" type="button">START 3D</button>
+      <button id="viz-stop" type="button">STOP</button>
+      <span class="note">
+        loads three.js on demand, then reads V[302] · spikeCount[302] · motor gates · tick by batched
+        eth_call every 12 s. Body wave amplitude / direction come from the real motor gates: if the brain
+        stops advancing the wave stops too.
+      </span>
+    </div>
+    <div id="viz-wrap">
+      <div class="viz-off" id="viz-off">3D viewer is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its on-chain voltage.</div>
+    </div>
+    <div class="viz-legend">
+      <span><i style="background:#2fd8ff"></i>excitatory synapse (pre → post)</span>
+      <span><i style="background:#ff5b7f"></i>inhibitory synapse (pre → post)</span>
+      <span><i style="background:#8ff5d0"></i>neuron brightness = membrane voltage V</span>
+      <span><i style="background:#ffffff"></i>white flash = spikeCount incremented</span>
+    </div>
+  </section>
+
   <!-- 1. IDENTITY -->
   <section class="card" id="card-identity">
     <h2><span class="num">01</span> · Identity</h2>

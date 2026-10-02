@@ -240,6 +240,7 @@ async function buildStimList(p, head, brainAddr, adapterAddr, stimNow) {
 // ---- main poll ----
 const POLL_MS = 10000;
 let hist = loadHist();
+let BRAIN_ADDR = null; // resolved from readout.brain() on the first successful poll
 
 async function poll() {
   const dot = el("dot"); const statusText = el("status-text");
@@ -248,6 +249,7 @@ async function poll() {
       const head = await p.getBlockNumber();
       const readout = asContract(p, READOUT, READOUT_ABI);
       const [brainAddr, staleWindow] = await Promise.all([readout.brain(), readout.STALE_WINDOW()]);
+      BRAIN_ADDR = brainAddr;
       const adapterAddr = ADAPTER;
       const brain = asContract(p, brainAddr, BRAIN_ABI);
       const adapter = asContract(p, adapterAddr, ADAPTER_ABI);
@@ -332,9 +334,65 @@ function renderEvidence() {
     </div>`).join("");
 }
 
+// ---- 3D viewer: lazy-loaded, still strictly read-only ----
+// three.js is code-split and only fetched when the user presses START 3D, and the
+// viewer itself only ever issues eth_call reads against the deployed brain.
+let viz = null;
+let vizBusy = false;
+
+const vizTarget = () => ({
+  // the viewer batches hundreds of eth_call, so it gets the whole seed list and
+  // picks whichever endpoint actually serves batches (see worm3d.js)
+  rpcUrls: RPC_SEEDS,
+  brain: BRAIN_ADDR,
+});
+
+async function startViz() {
+  if (viz || vizBusy) return;
+  vizBusy = true;
+  const btn = el("viz-start");
+  if (btn) btn.textContent = "LOADING…";
+  try {
+    const { createWormViz } = await import("./worm3d.js");
+    viz = await createWormViz({ container: el("viz-wrap"), getTarget: vizTarget });
+    const off = el("viz-off");
+    if (off) off.remove();
+    if (btn) { btn.textContent = "3D RUNNING"; btn.classList.add("on"); }
+  } catch (e) {
+    if (btn) btn.textContent = "START 3D";
+    console.error("[3d] failed to start", e && e.message ? e.message : e);
+  } finally {
+    vizBusy = false;
+  }
+}
+
+function stopViz() {
+  if (!viz) return;
+  viz.stop();
+  viz = null;
+  const btn = el("viz-start");
+  if (btn) { btn.textContent = "START 3D"; btn.classList.remove("on"); }
+  const wrap = el("viz-wrap");
+  if (wrap && !wrap.querySelector(".viz-off")) {
+    const d = document.createElement("div");
+    d.className = "viz-off";
+    d.id = "viz-off";
+    d.textContent = "3D viewer stopped — chain polling halted. Press START 3D to resume.";
+    wrap.appendChild(d);
+  }
+}
+
+function wireViz() {
+  const s = el("viz-start");
+  const t = el("viz-stop");
+  if (s) s.addEventListener("click", startViz);
+  if (t) t.addEventListener("click", stopViz);
+}
+
 async function boot() {
   el("rpc-host").textContent = new URL(RPC_SEEDS[0]).host;
   renderEvidence();
+  wireViz();
   await poll();
   setInterval(poll, POLL_MS);
 }

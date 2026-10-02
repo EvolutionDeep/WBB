@@ -10,7 +10,8 @@
     "test": "node test/smoke.mjs"
   },
   "dependencies": {
-    "ethers": "^6.13.4"
+    "ethers": "^6.13.4",
+    "three": "^0.169.0"
   },
   "devDependencies": {
     "vite": "^5.4.11"

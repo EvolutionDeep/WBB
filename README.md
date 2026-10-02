@@ -280,14 +280,34 @@ cd frontend; npm install; npm run dev   # serves http://127.0.0.1:5173/
 
 The page reads these three full addresses (all live on BscScan, chainId 56):
 
-- WormBrain (the animal, bound at construction): `0x18174bb0049d43fA75f468a037dfC32899f01dBB`
-- WormReadout (the `read()` lens): `0xe47f67b2e38AFA8a02e27A1D6F3694f33034aB18`
-- SenseAdapter (the stimulation entry): `0xb7b4C58E58f8496EA7f861c977c4c19698317b87`
+- WormBrain (the animal, bound at construction): `0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3`
+- WormReadout (the `read()` lens): `0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E`
+- SenseAdapter (the stimulation entry): `0xbe0C5117f740a9333614D806Bd50C3907186C6fD`
 
 The brain address is taken from `readout.brain()` on-chain, not hardcoded. When
 `current block − last advance block > 20` (the on-chain `STALE_WINDOW`), the
 Identity panel shows **HALTED** and stops plotting — the page never fakes motion
 or fabricates a trajectory between beats.
+
+### 3D viewer
+
+The dashboard also offers an opt-in **3D connectome viewer** (`src/worm3d.js`,
+Three.js, lazily imported so the base page carries no 3D dependency). Pressing
+START renders the whole animal from the corrected connectome — 302 neurons and
+5144 directed synapses from `public/data/graph.json`, regenerated from the
+authoritative `worm/data/brain_weights.json` by `scripts/gen_frontend_data.py`
+so the picture cannot drift from the deployed `connRoot`.
+
+It is read-only in the strictest sense: every frame is driven by batched
+`eth_call` reads of the live brain's public view getters — per-neuron membrane
+voltage `V(i)`, `spikeCount(i)`, motor `gate(i)`, `tick`, `connRoot` — and the
+module encodes no state-changing call at all (the smoke test asserts this).
+Node brightness maps `V` through a ±`V_THRESH` display band with gamma 2, a
+white flash marks a spike-count increment, and the body's peristaltic wave
+amplitude comes from the motor-neuron gates. Any display gains applied to make
+small signals visible are stated in the HUD rather than silently inflated. When
+`tick` stops changing (nobody paid for an `advance`), the wave freezes and the
+HUD shows **HALTED** — the viewer never animates a frozen animal.
 
 ## Determinism
 
@@ -313,9 +333,10 @@ synapse direction right.
 ## Frontend (`frontend/`)
 
 The live page is the **read-only dashboard** described above
-(`### Read-only dashboard`): a Vite + ethers app that reads the deployed
-`WormReadout` / `SenseAdapter` / brain directly from a public BSC RPC — no
-worker in the data path, no second brain in the browser, nothing signed or sent.
+(`### Read-only dashboard` and `### 3D viewer`): a Vite + ethers app that reads
+the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
+RPC — no worker in the data path, no second brain in the browser, nothing
+signed or sent. The optional Three.js 3D viewer only reads view getters.
 `npm test` runs a static read-only guardrail; `npm run build` emits `dist/`.
 
 ```powershell
@@ -339,7 +360,8 @@ worm/                 off-chain companion code
   data/               connectome npz, edge list, golden trajectory, layout, weights
   node/               resident daemon (advance only, keeps the animal alive)
 scripts/              analysis + layout generation helpers
-frontend/             Vite + ethers read-only dashboard (direct BSC RPC)
+frontend/             Vite + ethers read-only dashboard (direct BSC RPC) +
+                      opt-in Three.js 3D connectome viewer (view getters only)
 worker/               Cloudflare Worker: read-only chain aggregation API
 ```
 
