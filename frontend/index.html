@@ -126,14 +126,49 @@
   .viz-bar button.on { background: rgba(53,224,255,0.22); color: #dff5ff; border-color: var(--cy); }
   .viz-legend { display: flex; gap: 14px; font-size: 10px; color: rgba(148,205,226,0.7); margin-top: 6px; }
   .viz-legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
+
+  /* 05 · the inscription wall (read-only view of an immutable WormLedger) */
+  .wall-card { grid-column: 1 / -1; }
+  .wall-grid {
+    display: grid; gap: 6px; margin-top: 8px;
+    grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
+  }
+  .tile {
+    display: flex; flex-direction: column; gap: 2px; min-height: 64px; padding: 6px 8px;
+    border: 1px solid rgba(53,224,255,0.16); border-radius: 3px; background: rgba(4,10,16,0.6);
+  }
+  .tile .slot { font-size: 10px; letter-spacing: 0.1em; color: rgba(148,205,226,0.55); }
+  .tile .txt { font-size: 11px; color: #dff5ff; word-break: break-all; }
+  .tile .who { font-size: 10px; color: rgba(148,205,226,0.6); margin-top: auto; }
+  .tile.taken {
+    border-color: rgba(255,79,216,0.45); background: rgba(26,8,24,0.55);
+    box-shadow: inset 0 0 14px rgba(255,79,216,0.08);
+  }
+  .tile.taken .txt { color: var(--mag); }
+  .tile.open .txt { color: rgba(148,205,226,0.5); }
+  .tile.unknown { border-style: dashed; }
+  .tile.unknown .txt { color: var(--amber); }
+  .wall-form { margin-top: 10px; border-top: 1px dashed rgba(53,224,255,0.18); padding-top: 10px; }
+  .wall-form.hidden { display: none; }
+  .wall-fields { display: grid; gap: 8px; margin-bottom: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 860px) { .wall-fields { grid-template-columns: 1fr; } }
+  .wall-fields label { display: flex; flex-direction: column; gap: 3px; font-size: 10px; letter-spacing: 0.12em; color: rgba(148,205,226,0.65); }
+  .wall-fields input {
+    background: rgba(2,6,12,0.85); border: 1px solid rgba(53,224,255,0.25); border-radius: 3px;
+    color: #dff5ff; font: inherit; font-size: 12px; padding: 5px 8px;
+  }
+  .v.err, .note.err { color: var(--red); }
+  .v.ok { color: var(--grn); }
 </style>
 </head>
 <body>
 <header>
   <h1>Worm<b>Readout</b> · read-only lens</h1>
   <div class="tagline">
-    a permissionless on-chain C. elegans on BSC mainnet · this page only <b>reads</b> the deployed
-    WormReadout &amp; SenseAdapter — it signs nothing, runs no brain step, and never advances the animal
+    a permissionless on-chain C. elegans on BSC mainnet · this page <b>reads</b> the deployed
+    WormReadout &amp; SenseAdapter and never advances the animal by itself · the only two ways anything
+    is ever spent here are the opt-in poke and the opt-in engraving, each pinned to one contract and
+    signed by your own wallet
   </div>
 </header>
 
@@ -220,6 +255,64 @@
     <div class="list" id="poke-feed"></div>
   </section>
 
+  <!-- 4b. INSCRIPTION WALL (read-only view of the immutable WormLedger) -->
+  <section class="card wall-card" id="card-wall">
+    <h2><span class="num">05</span> · Inscription wall (read-only until you arm it)</h2>
+    <div class="viz-bar">
+      <button id="wall-load" type="button">READ THE WALL</button>
+      <button id="wall-enable" type="button" disabled>ENABLE ENGRAVING</button>
+      <button id="wall-rescan" type="button">RE-SCAN FROM GENESIS</button>
+    </div>
+    <div class="row"><span class="k">WALL</span><span id="wall-status" class="v">not loaded — nothing is read from this card until you press READ THE WALL</span></div>
+    <div class="row"><span class="k">PRICE PER SLOT (MUST ARRIVE)</span><span class="v" id="wall-price">—</span></div>
+    <div class="row"><span class="k">CONTRACT FLOOR (PRICE ÷ 0.97)</span><span class="v" id="wall-min">—</span></div>
+    <div class="row"><span class="k">SLOT SPAN</span><span class="v" id="wall-ticks">—</span></div>
+    <div class="row"><span class="k">NEWEST SLOT</span><span class="v" id="wall-cur-slot">—</span></div>
+    <div class="row"><span class="k">ENGRAVED SO FAR</span><span class="v mag" id="wall-taken">—</span></div>
+    <div class="row"><span class="k">LOG SCAN COVERAGE</span><span class="v mono" id="wall-scan">—</span></div>
+    <div class="wall-grid" id="wall-grid"></div>
+    <div class="note">
+      The last 24 slots of the animal's life, each one purchasable forever. A magenta brick carries
+      text that is already on-chain and can never be edited, overwritten or removed; the paid token is
+      burned in the same transaction, so the ledger holds no balance and pays no one. The price is what
+      must ARRIVE, and the token levies a 3% transfer tax, so the contract floor is price ÷ 0.97 — the
+      engraving form deliberately prefills 2% above that, because it cannot know how the token rounds
+      its own fee and a reverted inscription still costs gas. Everything above is an eth_call or an
+      Inscribed event log — this card reads the deployed WormLedger at
+      0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966 and copies nothing from a server.
+    </div>
+    <div class="list" id="wall-log"></div>
+
+    <div class="wall-form hidden" id="wall-form">
+      <div class="viz-bar">
+        <button id="wall-connect" type="button">ATTACH WALLET</button>
+      </div>
+      <div class="wall-fields">
+        <label>SLOT (AN ALREADY-LIVED ONE)
+          <input id="wall-slot" type="number" min="0" step="1" value="0" />
+        </label>
+        <label>TEXT · 1–64 PRINTABLE ASCII
+          <input id="wall-text" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="what should outlive the worm" />
+        </label>
+        <label>TOKEN TO SEND (INCLUDING THE 3% TAX)
+          <input id="wall-nominal" type="text" inputmode="decimal" autocomplete="off" />
+        </label>
+      </div>
+      <div class="row"><span class="k">CHECK</span><span id="wall-preview" class="note">type above — the contract's own text rule is applied here before anything is signed</span></div>
+      <div class="row"><span class="k">WALLET</span><span class="v" id="wall-wallet">no wallet attached</span></div>
+      <div class="row"><span class="k">ALLOWANCE</span><span class="v" id="wall-allow">—</span></div>
+      <div class="viz-bar" style="margin-top: 8px">
+        <button id="wall-send" type="button">ENGRAVE (approve + inscribe)</button>
+      </div>
+      <div class="note">
+        Arming this form loads a second module that can encode exactly two calls:
+        ERC20.approve(ledger, amount) and WormLedger.inscribe(slot, text, nominal). It never touches
+        the brain, never takes a key, and every signature is confirmed inside your own wallet. A slot
+        is permanent: two transactions, your token, your gas, and no undo.
+      </div>
+    </div>
+  </section>
+
   <!-- 3c. TIME-LAPSE (recorded on-chain past, static data, zero RPC) -->
   <section class="card" id="card-replay">
     <h2><span class="num">06</span> · Time-lapse (the worm's recorded past)</h2>
@@ -249,7 +342,7 @@
   <span>RPC <span id="rpc-host" class="v mono">—</span></span>
   <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
   <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
-  <span class="ro">READ-ONLY BY DEFAULT · ONE OPT-IN POKE, SIGNED BY YOUR OWN WALLET</span>
+  <span class="ro">READ-ONLY BY DEFAULT · TWO OPT-IN WRITE PATHS (POKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
 </footer>
 
 <script type="module" src="/src/main.js"></script>

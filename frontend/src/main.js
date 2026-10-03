@@ -9,6 +9,12 @@ import { ethers } from "ethers";
  * advance/stimulate/seed, and NEVER runs a second copy of the brain in the browser.
  * Every number on screen is on-chain state served by eth_call / eth_getLogs.
  *
+ * Two write paths exist on the site and neither of them lives in this file: the
+ * poke (src/poke.js) and the engraving form (src/engrave.js, reached through the
+ * read-only wall module src/wall.js). Both load by dynamic import behind their own
+ * click, each pins one contract and one function, and neither can be reached from
+ * the default page.
+ *
  * Comment policy: English only (project rule).
  */
 
@@ -474,9 +480,10 @@ function wireViz() {
   if (t) t.addEventListener("click", stopViz);
 }
 
-// The poke module is the site's single sanctioned write path and is deliberately
-// NOT part of the default page: it only loads after an explicit opt-in click,
-// stays behind a pinned single-call ABI, and is fenced by its own smoke guards.
+// The poke module is one of the site's two sanctioned write paths and is
+// deliberately NOT part of the default page: it only loads after an explicit
+// opt-in click, stays behind a pinned single-call ABI, and is fenced by its own
+// smoke guards. Nothing in this file ever signs or sends.
 function wirePoke() {
   const b = el("poke-enable");
   if (!b) return;
@@ -516,12 +523,35 @@ function wireReplay() {
   }, { once: true });
 }
 
+// The inscription wall: a read-only view of the immutable WormLedger, with the
+// engraving form behind a second opt-in click inside wall.js. The default page
+// only ever reads here — src/engrave.js is imported by that click, never by boot().
+function wireWall() {
+  const b = el("wall-load");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    b.textContent = "LOADING…";
+    try {
+      const m = await import("./wall.js");
+      m.init();
+      b.textContent = "WALL ONLINE";
+    } catch (e) {
+      b.disabled = false;
+      b.textContent = "READ THE WALL";
+      const s = el("wall-status");
+      if (s) { s.textContent = "wall module failed to load: " + ((e && e.message) || e); s.className = "v err"; }
+    }
+  }, { once: true });
+}
+
 async function boot() {
   el("rpc-host").textContent = new URL(RPC_SEEDS[0]).host;
   renderEvidence();
   wireViz();
   wirePoke();
   wireReplay();
+  wireWall();
   await poll();
   setInterval(poll, POLL_MS);
 }

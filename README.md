@@ -267,10 +267,14 @@ beat). The frontend was rebuilt to the new readout/adapter and redeployed
 
 ### Read-only dashboard
 
-`frontend/` is a **read-only** page: it only issues `eth_call` / `eth_getLogs`
-against a public BSC RPC. It never signs, never connects a wallet, never sends a
-transaction, and never calls `advance` / `stimulate` / `seed`; no second copy of
-the brain runs in the browser.
+`frontend/` is a **read-only** page by default: it only issues `eth_call` /
+`eth_getLogs` against a public BSC RPC. Nothing it loads on its own ever signs,
+connects a wallet, sends a transaction or calls `advance` / `stimulate` / `seed`, and
+no second copy of the brain runs in the browser. Two modules are the documented
+exception, and both sit behind an explicit click of their own: `src/poke.js` (see
+*Poke the worm*) and `src/engrave.js` (see *The inscription wall on the dashboard*).
+Every other file in `src/` — including the wall's read side `src/wall.js` — is held to
+the absolute ban by the smoke test.
 
 Local preview:
 
@@ -377,7 +381,7 @@ beats. Other sites embed it with:
 
 `inject(int256)` on the deployed `SenseAdapter` was always permissionless —
 anyone could write to it from BscScan or a script. The dashboard now exposes
-that door honestly, as the site's single sanctioned write path
+that door honestly, as one of the site's two sanctioned write paths
 (`src/poke.js`, dynamically imported only after an explicit opt-in click):
 the visitor connects their own wallet, pays their own gas (~0.0000x BNB), and
 the module can encode exactly one call against one pinned address. Positive
@@ -484,6 +488,68 @@ constructor inlines `brain`/`token`/`price`/`minStake`. This is a weaker claim t
 explorer verification: it convinces anyone who runs it themselves, and it is offered
 as such rather than as a substitute for the published source.
 
+### The inscription wall on the dashboard
+
+Card **05** of `bscworm.com` renders the deployed `WormLedger`, and it is split into
+two modules on purpose — a stricter arrangement than the poke card, which keeps its
+read feed and its single write in one fenced file:
+
+- `frontend/src/wall.js` — **read-only, and still inside the global ban.** One batched
+  `eth_call` for the seven getters, one 24-call batch for the visible slots, and an
+  `Inscribed` event walk that starts at the pinned deployment block
+  (`125402131`) and advances in 2,000-block spans cached in `localStorage`, so a
+  visitor who keeps the tab open keeps syncing instead of re-reading from genesis.
+  A span an endpoint refuses is counted and reported as refusal, never drawn as "no
+  one has engraved anything"; a slot this page cannot read is drawn as *unreadable*,
+  not as *open*. If `token()` on the ledger is not the token this page pins, the card
+  refuses to quote a price at all. Engraved text is HTML-escaped before it is drawn —
+  the contract's printable-ASCII rule is the first line of defence, not the only one.
+- `frontend/src/engrave.js` — **the write path, reached only by a click inside the
+  wall card.** It can encode exactly two calls, `ERC20.approve(ledger, amount)` and
+  `WormLedger.inscribe(slot, text, nominal)`, against exactly two addresses, the
+  pinned ledger and its pinned token. It never names the brain, so nothing on the
+  wall can move or stimulate the animal; it never sees a key, since signing happens
+  in the visitor's own wallet. Because the price is defined as what *arrives* and the
+  token keeps 3%, the form prefills `price / 0.97` plus a 2% margin — the displayed
+  contract floor (1.0309) is the bare minimum, and the extra exists because I cannot
+  know how the deployed token rounds its own fee and a reverted inscription still
+  costs gas. Text policy, slot window and nominal are all checked client-side first so
+  a mistake costs a keystroke instead of a fee.
+
+`frontend/test/smoke.mjs` fences both halves: `wall.js` stays under the site-wide ban
+on `getSigner` / `sendTransaction` / `window.ethereum` / key material, while
+`engrave.js` is exempted from that blanket rule only to be held to a narrower one —
+the ledger and its token are the only two address literals in the file, `approve` and
+`inscribe` the only two calls it can make, every `Contract(...)` is built on one of
+the two pinned identifiers, and no module may reach it through a static import.
+
+What I verified after deploying, rather than assuming:
+
+- **Live page, real browser.** Pressing READ THE WALL filled the card from chain
+  state: `wall read`, price `1.0000 WormBrain (must arrive)`, contract floor
+  `1.0309`, newest slot `93 (brain tick 937)`, `0 engraved`, log coverage "all
+  history, through block 125408500", 24 tiles all `open`, and no console errors. Its
+  64 JSON-RPC requests spread over publicnode and the dataseeds and all returned 200.
+- **The write encoding, without spending.** `inscribe` carries selector `0x9b882837`
+  and the live contract accepted it far enough to prove the frontend's ordering: a
+  static `eth_call` for a legal slot at exactly the floor passed every check the ledger
+  makes itself and failed only inside the token, at `"ERC20: insufficient allowance"`;
+  below the floor it answered `"nominal below price"`, and one slot ahead `"slot is in
+  the future"`. That is the contract confirming the frontend's ordering and arithmetic,
+  not my test agreeing with my code.
+- **Bundle shape.** The deployed entry chunk contains neither the ledger address nor
+  `window.ethereum` nor `inscribe(`; those live only in the lazily fetched
+  `wall-*.js` and `engrave-*.js` chunks, so the default page genuinely cannot spend.
+
+No inscription has been made yet: the wall is empty, and the first one costs its
+author ~1.05 token plus two transactions of gas. I have not spent any of your token
+on this — arming the form and pressing ENGRAVE is yours to do.
+
+```powershell
+cd frontend; npm test; npm run build      # fence + Vite build into frontend/dist
+cd ../site; npx wrangler deploy           # serves dist on bscworm.com + www
+```
+
 ## Determinism
 
 `worm/brain_spec.py` is the authoritative integer spec (MIT license, Q20 fixed
@@ -511,13 +577,15 @@ The live page is the **read-only dashboard** described above
 (`### Read-only dashboard` and `### 3D viewer`): a Vite + ethers app that reads
 the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
 RPC — no worker in the data path, no second brain in the browser. By default
-nothing is signed or sent; the only exception is the explicitly opt-in poke
-module (`### Poke the worm`), which relays a single pinned call to the
-visitor's own wallet. The optional Three.js 3D viewer only reads view getters,
-and the time-lapse card (`### Time-lapse`) plays a static recording of
-replayed on-chain state. `npm test` runs a static read-only guardrail covering
-every module plus a dedicated fence around the poke path and an integrity
-check on the replay recording; `npm run build` emits `dist/` including the
+nothing is signed or sent; the two exceptions are both explicitly opt-in and each
+pins one contract and one function — the poke module (`### Poke the worm`) and the
+engraving form behind the wall card (`### The inscription wall on the dashboard`),
+which relay their calls to the visitor's own wallet. The optional Three.js 3D viewer
+only reads view getters, and the time-lapse card (`### Time-lapse`) plays a static
+recording of replayed on-chain state. `npm test` runs a static read-only guardrail
+covering every module except those two, each of which gets a narrower dedicated
+fence, plus an integrity check on the replay recording and an existence check for
+every element id the wall touches; `npm run build` emits `dist/` including the
 embeddable badge and `data/replay.json`.
 
 ```powershell
@@ -532,7 +600,8 @@ contracts/            Hardhat + ethers v6 project (solc 0.8.24, viaIR)
                       integration layers: IWormBrain / WormNeurons / WormReadout /
                       SenseAdapter / WormEffectorDemo (+ mocks/PancakeMocks.sol)
   test/               worm.test.js, wormbrain.test.js (golden trajectory),
-                      wormreadout.test.js, senseadapter.test.js, wormeffector.test.js
+                      wormreadout.test.js, senseadapter.test.js, wormeffector.test.js,
+                      advance_guards.test.js, wormledger.test.js, wormguess.test.js
   scripts/            deploy / seed / verify / readout+adapter deployment / inspection
 worm/                 off-chain companion code
   brain_spec.py       authoritative integer spec -> brain_weights.json + brain_golden.json
@@ -541,8 +610,9 @@ worm/                 off-chain companion code
   data/               connectome npz, edge list, golden trajectory, layout, weights
   node/               resident daemon (advance only, keeps the animal alive)
 scripts/              analysis + layout generation helpers
-frontend/             Vite + ethers read-only dashboard (direct BSC RPC) +
-                      opt-in Three.js 3D connectome viewer (view getters only)
+frontend/             Vite + ethers read-only dashboard (direct BSC RPC), opt-in
+                      Three.js 3D viewer (view getters only), opt-in poke, and the
+                      inscription wall (src/wall.js reads, src/engrave.js writes)
 worker/               Cloudflare Worker: read-only chain aggregation API
 ```
 
