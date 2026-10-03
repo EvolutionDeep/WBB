@@ -436,7 +436,7 @@ a contract that pretended otherwise would be short-changing itself.
 
 Why there is no paid influence over the worm. An earlier design sold a quota on
 `stimulate`, on the assumption that stimulus capacity is a contested resource. It is
-not: `stimulate(index, amp)` is permissionless and one transaction at `ampCap` drives
+not: `stimulate(index, amp)` is permissionless and one transaction at the cap drives
 that neuron's stimulus to its ceiling (+/-8.0) *and* its memory to +/-2.0 at the same
 time (`K_MEM` writes memory inline, and only the neuron's own spikes erode it, ~0.5%
 each). Anyone — paying or not — can saturate the memory of any of the 302 neurons in
@@ -455,8 +455,34 @@ node scripts/deploy_endowments.js --on mainnet --i-authorize-mainnet
 
 Mainnet deployment is a separate deliberate act behind an explicit flag; the script
 reads `tick()`/`stateHash()` before and after and aborts if its own deployment moved
-the animal. Status: contracts written, `npx hardhat test` covers them (23 cases across
-the two suites, all local), nothing deployed yet.
+the animal.
+
+**Both are live on BSC mainnet**, wired to the running worm and to the `0xa18f…`
+token, with the parameters frozen as deployed — one inscription per 10 ticks at 1.0
+token arriving net of tax, and a 1.0 token minimum stake:
+
+| contract | address | deployed block |
+| --- | --- | --- |
+| `WormLedger` | `0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966` | 125402131 |
+| `WormGuess` | `0x8d3c1e2fED66aAB5293d0FC8983988Df15e6353b` | 125402137 |
+
+The two transactions cost 1,004,455 and 1,219,279 gas (0.00011 BNB together), and
+`tick()`/`stateHash()` were identical before and after: the deployments did not touch
+the animal. `npx hardhat test` covers both suites (23 cases, all local).
+
+One honest gap: explorer source verification did not work from this network. The
+legacy `api.bscscan.com` endpoint now answers `301 -> docs.etherscan.io/v2-migration`,
+and the Etherscan v2 multichain host that replaced it is unreachable from Node here
+(`UND_ERR_CONNECT_TIMEOUT`, while a keyless probe through another client is refused
+with "Free API access is not supported for this chain"). So `npx hardhat verify`
+could not publish from this machine — it may from elsewhere. The closest check
+available from here is made offline instead —
+`node scripts/verify_bytecode.cjs WormLedger 0xb305… WormGuess 0x8d3c…` compares the
+deployed runtime code with a fresh local compile of this source: identical metadata
+fingerprint, identical size, and zero divergences outside the slots where the
+constructor inlines `brain`/`token`/`price`/`minStake`. This is a weaker claim than an
+explorer verification: it convinces anyone who runs it themselves, and it is offered
+as such rather than as a substitute for the published source.
 
 ## Determinism
 

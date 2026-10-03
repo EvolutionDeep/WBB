@@ -135,23 +135,23 @@ async function main() {
   console.log("read-back: neither contract owns, pauses, upgrades, withdraws, advances or stimulates");
 
   // ---- record ----
-  const record = {
-    brain: brainAddr, token: tokenAddr,
-    ticksPerSlot: cfg.ticksPerSlot.toString(),
-    price: cfg.price.toString(), minStake: cfg.minStake.toString(),
-    deployedAtBlock: (await provider.getBlockNumber()).toString(),
-  };
+  // only the parameters each contract actually received: a record that lists a price
+  // for WormGuess would describe a setter that does not exist
+  const base = { brain: brainAddr, token: tokenAddr };
+  const ledgerRecord = { ...base, ticksPerSlot: cfg.ticksPerSlot.toString(), price: cfg.price.toString() };
+  const guessRecord = { ...base, minStake: cfg.minStake.toString() };
+  const deployedAtBlock = (await provider.getBlockNumber()).toString();
   if (cfg.on === "mainnet") {
-    rec.WormLedger = { address: ledger.address, ...record };
-    rec.WormGuess = { address: guess.address, ...record };
+    rec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock };
+    rec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock };
     fs.writeFileSync(recPath, JSON.stringify(rec, null, 2) + "\n");
     console.log("\ndeployed_addresses.json updated (WormLedger + WormGuess).");
   } else {
     const tPath = path.join(__dirname, "..", "deployed_addresses.testnet.json");
     const trec = fs.existsSync(tPath) ? JSON.parse(fs.readFileSync(tPath, "utf-8")) : {};
     trec.chainId = Number(CHAINS.testnet);
-    trec.WormLedger = { address: ledger.address, ...record };
-    trec.WormGuess = { address: guess.address, ...record };
+    trec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock };
+    trec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock };
     if (mock) trec.MockTaxToken = { address: mock.address };
     fs.writeFileSync(tPath, JSON.stringify(trec, null, 2) + "\n");
     console.log("\ndeployed_addresses.testnet.json updated (mainnet record untouched).");

@@ -14,17 +14,28 @@
 //      zero placeholder there and the chain stores the real value. Every such window
 //      is classified as an immutable; any other mismatch is a REAL divergence.
 //
-// Run after `npx hardhat compile`:   node scripts/verify_bytecode.cjs
-// Sends NO transaction. This is a local proof; `npx hardhat verify` on BscScan is
-// what makes the same equivalence visible to third parties.
+// Run after `npx hardhat compile`:
+//   node scripts/verify_bytecode.cjs                                   # the brain
+//   node scripts/verify_bytecode.cjs WormLedger 0xb305.. WormGuess 0x8d3c..
+// Any number of <ContractName> <address> pairs may be given; the contract is looked
+// up at artifacts/contracts/<Name>.sol/<Name>.json. Sends NO transaction. This is a
+// local proof; `npx hardhat verify` on an explorer is what makes the same equivalence
+// visible to third parties (unavailable here: the legacy BSC API host now 301s to the
+// migration doc and the v2 host is unreachable from this network).
 const fs = require("fs");
 const path = require("path");
 const { ethers } = require("ethers");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
-const RPC = process.env.BSC_RPC_URL || "https://bsc-dataseed1.bnbchain.org";
+const RPC = process.env.ALCHEMY_BSC_RPC || process.env.BSC_RPC_URL || "https://bsc-dataseed1.bnbchain.org";
 const BRAIN = "0x18174bb0049d43fA75f468a037dfC32899f01dBB";
-const ART = path.join(__dirname, "..", "artifacts", "contracts", "WormBrainV2.sol", "WormBrainV2.json");
+
+// pairs of <ContractName> <address>, defaulting to the brain this script was written for
+const argv = process.argv.slice(2);
+const TARGETS = argv.length
+  ? argv.reduce((acc, v, i) => (i % 2 === 0 ? acc : acc.concat([{ name: argv[i - 1], address: v }])), [])
+  : [{ name: "WormBrainV2", address: BRAIN }];
+const artPath = (name) => path.join(__dirname, "..", "artifacts", "contracts", `${name}.sol`, `${name}.json`);
 
 const strip0x = (h) => (h.toLowerCase().startsWith("0x") ? h.slice(2) : h.toLowerCase());
 // body = everything before <cbor><2-byte cbor length>
@@ -34,21 +45,21 @@ function splitMeta(hex) {
   return { body: hex.slice(0, hex.length - (len * 2 + 4)), meta: hex.slice(hex.length - (len * 2 + 4)) };
 }
 
-async function main() {
+async function verifyTarget(provider, name, address) {
+  const ART = artPath(name);
   if (!fs.existsSync(ART)) {
-    console.error("artifact missing -- run `npx hardhat compile` first");
+    console.error(`${name}: artifact missing -- run \`npx hardhat compile\` first`);
     process.exitCode = 1;
     return;
   }
   const compiled = JSON.parse(fs.readFileSync(ART, "utf-8"));
-  const provider = new ethers.JsonRpcProvider(RPC, undefined, { staticNetwork: true });
-  const deployedHex = strip0x(await provider.getCode(BRAIN));
+  const deployedHex = strip0x(await provider.getCode(address));
   const compiledHex = strip0x(compiled.deployedBytecode);
 
   const d = splitMeta(deployedHex);
   const c = splitMeta(compiledHex);
 
-  console.log("address       :", BRAIN);
+  console.log(`\n${name} ${address}`);
   console.log("runtime size  : deployed", d.body.length / 2, "B | compiled", c.body.length / 2, "B");
   const metaEqual = d.meta === c.meta && d.meta.length > 0;
   console.log("metadata match:", metaEqual, "(source+settings fingerprint -- identical => same solc build of the same source)");
@@ -86,6 +97,11 @@ async function main() {
         : "byte-for-byte identical runtime => the on-chain bytes ARE this exact source.")
       : "metadata differs -- cannot claim source identity from this check alone."
   );
-  console.log("Publish it: npx hardhat verify --network bscMainnet " + BRAIN);
+  console.log(`Publish it: npx hardhat verify --network bscMainnet ${address}`);
+}
+
+async function main() {
+  const provider = new ethers.JsonRpcProvider(RPC, undefined, { staticNetwork: true });
+  for (const t of TARGETS) await verifyTarget(provider, t.name, t.address);
 }
 main().catch((e) => { console.error(e.message || e); process.exitCode = 1; });
