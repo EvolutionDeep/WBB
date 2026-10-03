@@ -7,7 +7,8 @@ name: ci
 #   2. The Solidity contract reproduces that spec: full Hardhat suite, including
 #      the on-chain stateHash == Python golden trajectory assertion.
 #   3. The worker event decoder handles real log words offline (the historical
-#      fired=26 -> 502 crash is pinned by a unit test).
+#      fired=26 -> 502 crash is pinned by a unit test), and the browser's read-only
+#      RPC proxy refuses every method that could spend or sign.
 #   4. The frontend builds and is provably read-only (no signing/tx path).
 
 on:
@@ -47,6 +48,12 @@ jobs:
 
       - name: Worker - event decoder unit test (offline, no RPC)
         run: node worker/test_events.mjs
+
+      # The browser read proxy is policy, not plumbing: which methods may leave the
+      # worker, in which gateway order, and whether a metered URL can escape in an error.
+      # Checked with fetch stubbed out, so no gateway is billed to prove it.
+      - name: Worker - read-only RPC proxy gate test (offline, no RPC)
+        run: node worker/test_rpc_gate.mjs
 
       - name: Frontend - build and read-only smoke test
         working-directory: frontend

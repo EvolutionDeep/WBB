@@ -8,12 +8,17 @@
  *   GET  /api/events     recent Advanced / Stimulated logs from the contract, so the
  *                        frontend can show on-chain history (read-only).
  *   GET  /api/status     cheap health check (contract, tick, cache age).
+ *   POST /api/rpc        narrow read-only JSON-RPC proxy (whitelisted eth_call,
+ *                        eth_getLogs, block/head reads; single request or batch) so the
+ *                        browser can PREFER the metered gateway without carrying its
+ *                        key inside a public bundle. No write method is ever forwarded.
  *   POST /api/push-snapshot / /api/push-events  daemon-only (X-Daemon-Key) feeds so the
  *                        poll path costs zero extra RPC; the worker only ever READS the chain.
  *
- * Env (wrangler): BRAIN_ADDRESS, BSC_RPC, DAEMON_KEY, WBB_STORE (KV, shared snapshot/events
- * cache across isolates). This worker is a pure read-only bridge: it never enqueues or
- * sends any transaction and holds no private key.
+ * Env (wrangler): BRAIN_ADDRESS, BSC_RPC (the metered gateway; it LEADS every read),
+ * DAEMON_KEY, WBB_STORE (KV, shared snapshot/events cache across isolates). This worker
+ * is a pure read-only bridge: it never enqueues or sends any transaction and holds no
+ * private key -- the only secret it carries is an RPC URL that embeds a read key.
  */
 
 const SEL = {
@@ -51,17 +56,48 @@ const FALLBACK_RPCS = [
   "https://bsc-dataseed1.defibit.io",
 ];
 
-// Public dataseeds carry the polling load (free, no CU meter); a configured
-// BSC_RPC (comma-separated private endpoints) is kept as LAST-resort failover
-// so a metered provider is only touched when every public node fails.
-const rpcUrls = (env) => [
-  ...FALLBACK_RPCS,
+// The metered gateway leads whenever it is configured: it answers every method here
+// reliably, where the free dataseeds drop batch members and refuse eth_getLogs
+// outright. The public pool is the failover, used once the preferred endpoint has
+// actually failed -- running out of compute units is a reason to degrade a read, never
+// a reason to refuse one up front.
+export const rpcUrls = (env) => [
   ...(env.BSC_RPC ? env.BSC_RPC.split(",").map((s) => s.trim()).filter(Boolean) : []),
+  ...FALLBACK_RPCS,
 ];
 
 const FETCH_TIMEOUT_MS = 12000; // fail fast to the next endpoint, never hang a poll
+const DOWN_COOLDOWN_MS = 30000; // per isolate: a gateway that just failed is skipped
+const downUntil = new Map();    // url -> epoch ms
 
-const json = (obj, status = 200) =>
+function attemptOrder(urls, preferred) {
+  // With a configured gateway it leads: the first attempt is always its, and the free
+  // pool only gets a turn after it actually failed. Without one the free endpoints are
+  // rotated, so a poll never hammers a single public node.
+  if (!urls.length) return [];
+  const start = RR++ % urls.length;
+  if (!preferred) return urls.map((_, i) => urls[(start + i) % urls.length]);
+  const rest = urls.slice(1);
+  if (!rest.length) return [urls[0]];
+  const rstart = RR++ % rest.length;
+  return [urls[0], ...rest.map((_, i) => rest[(rstart + i) % rest.length])];
+}
+const gatewayDown = (url) => { const t = downUntil.get(url); return !!t && Date.now() < t; };
+function markGateway(url, err) {
+  if (downUntil.size > 32) for (const [k, v] of downUntil) { if (v < Date.now()) downUntil.delete(k); }
+  downUntil.set(url, Date.now() + DOWN_COOLDOWN_MS);
+  return err;
+}
+
+// BSC_RPC embeds a read key in its path, and HTTP/RPC exceptions quote the endpoint
+// they used -- so no error text may leave this worker before the URL is stripped.
+export function scrub(env, text) {
+  let s = String(text === null || text === undefined ? "" : text);
+  for (const u of (env.BSC_RPC || "").split(",").map((x) => x.trim()).filter(Boolean)) s = s.split(u).join("***");
+  return s.slice(0, 400);
+}
+
+const json = (obj, status = 200, extra = {}) =>
   new Response(JSON.stringify(obj), {
     status,
     headers: {
@@ -69,8 +105,15 @@ const json = (obj, status = 200) =>
       "access-control-allow-origin": "*",
       "access-control-allow-methods": "GET,POST,OPTIONS",
       "access-control-allow-headers": "content-type,x-daemon-key",
+      ...extra,
     },
   });
+
+// A browser POSTs an Origin header; curl and cron do not. This is a guard against some
+// other site quietly spending this worker's gateway quota, not a lock -- the per-address
+// budget below is what actually bounds a non-browser caller.
+const ORIGIN_OK = /(^[a-z][a-z0-9+.-]*:\/\/(localhost|127\.0\.0\.1)(:\d+)?$)|(^https:\/\/([a-z0-9-]+\.)*(bscworm\.com|pages\.dev|workers\.dev)$)/i;
+export const originAllowed = (origin) => !origin || ORIGIN_OK.test(origin);
 
 function toSigned(hexWord) {
   // Accept a word with OR without the 0x prefix. A raw 64-hex slice (an event data
@@ -111,11 +154,10 @@ export function decodeLogs(logs) {
 }
 
 async function rpc(env, method, params) {
-  const urls = rpcUrls(env);
-  const start = RR++ % urls.length; // spread singles across endpoints
+  const order = attemptOrder(rpcUrls(env), !!env.BSC_RPC);
   let lastErr = new Error("no rpc endpoints");
-  for (let k = 0; k < urls.length; k++) {
-    const url = urls[(start + k) % urls.length];
+  for (const url of order) {
+    if (gatewayDown(url)) { lastErr = new Error(`${method}: gateway cooling down`); continue; }
     try {
       const res = await fetch(url, {
         method: "POST",
@@ -127,7 +169,9 @@ async function rpc(env, method, params) {
       if (j.error) throw new Error(`rpc ${method}: ${JSON.stringify(j.error)}`);
       return j.result;
     } catch (e) {
-      lastErr = e; // next endpoint: public dataseeds rate-limit per method
+      // next endpoint: a refused or cooling gateway is parked for a moment so a
+      // single poll does not knock on it once per getter
+      lastErr = markGateway(url, e); // public dataseeds rate-limit eth_call per method
     }
   }
   throw lastErr;
@@ -157,6 +201,7 @@ async function rpcBatch(env, calls, blockTag = "latest") {
   // the public path is concurrent single eth_calls rotated over endpoints.
   const privateUrls = env.BSC_RPC ? env.BSC_RPC.split(",").map((s) => s.trim()).filter(Boolean) : [];
   for (const url of privateUrls) {
+    if (gatewayDown(url)) continue; // metered gateway out for a moment: use the free pool
     try {
       const out = [];
       for (let off = 0; off < calls.length; off += 100) {
@@ -340,6 +385,146 @@ async function apiEvents(env, url) {
   return json(payload);
 }
 
+// ---- browser read proxy (POST /api/rpc) ----
+
+// The dashboard, the wall and the poke feed all only ever READ: every transaction on this
+// site is signed inside the visitor's own wallet. So this endpoint forwards exactly the
+// methods those reads need and nothing that could spend, broadcast or impersonate.
+const RPC_READ_METHODS = new Set([
+  "eth_call",
+  "eth_getLogs",
+  "eth_blockNumber",
+  "eth_chainId",
+  "eth_getBlockByNumber",
+]);
+
+const MAX_BATCH = 100;          // measured: the metered gateway answers a 100-member batch in order
+const MAX_SPAN = 20000;         // blocks per eth_getLogs; the widest scan on the site is 9000
+const MAX_BODY_BYTES = 262144;  // a 100-call eth_call batch is ~25 KB; above this it is abuse
+const WINDOW_MS = 60000;
+const WINDOW_WEIGHT = 6000;     // inner JSON-RPC calls per minute per client address
+
+// Blocks between two eth_getLogs bounds, or null when either bound is a word like
+// "latest" -- an open-ended range is the gateway's own cap to enforce, not ours.
+function logSpan(q) {
+  if (!q || typeof q !== "object") return null;
+  const num = (v) => (typeof v === "string" && /^0x[0-9a-fA-F]+$/.test(v) ? Number(BigInt(v)) : null);
+  const a = num(q.fromBlock);
+  const b = num(q.toBlock);
+  return a === null || b === null ? null : Math.max(0, b - a);
+}
+
+/**
+ * Decide what may leave the worker. Pure: no network, no env, no secret -- so the
+ * policy (read-only methods, batch size, log span) is unit-testable on its own.
+ * Refused members come back as JSON-RPC errors carrying their own id, which keeps a
+ * partially refused batch honest about its holes instead of silently dropping rows.
+ */
+export function gateRpc(payload) {
+  const batched = Array.isArray(payload);
+  const items = batched ? payload : [payload];
+  if (!items.length || items.length > MAX_BATCH) {
+    return { err: { code: -32600, message: `between 1 and ${MAX_BATCH} requests per call` } };
+  }
+  const answers = [];
+  const forward = [];
+  for (const it of items) {
+    const id = it && it.id !== undefined ? it.id : null;
+    const refuse = (code, message) => answers.push({ jsonrpc: "2.0", id, error: { code, message } });
+    if (!it || typeof it.method !== "string") { refuse(-32600, "not a JSON-RPC request"); continue; }
+    if (!RPC_READ_METHODS.has(it.method)) { refuse(-32601, `${it.method} is not served here: read-only proxy`); continue; }
+    if (it.method === "eth_getLogs") {
+      const span = logSpan(it.params && it.params[0]);
+      if (span !== null && span > MAX_SPAN) { refuse(-32005, `log range of ${span} blocks exceeds the ${MAX_SPAN}-block cap`); continue; }
+    }
+    forward.push(it);
+  }
+  return { batched, forward, answers, weight: forward.length };
+}
+
+// Per-isolate budget. Cloudflare isolates do not share memory and a KV write costs a
+// fraction of the free daily quota, so this is a rough guard against one address
+// hammering the gateway -- not an exact ledger of who used what.
+const budget = new Map(); // address -> { at, used }
+function spend(ip, weight) {
+  const now = Date.now();
+  const b = budget.get(ip);
+  if (!b || now - b.at > WINDOW_MS) {
+    if (budget.size > 4096) { for (const [k, v] of budget) { if (now - v.at > WINDOW_MS) budget.delete(k); } }
+    budget.set(ip, { at: now, used: weight });
+    return true;
+  }
+  b.used += weight;
+  return b.used <= WINDOW_WEIGHT;
+}
+
+// The reply to a hard refusal: one error envelope for a single request, an array for a
+// batch, always with the caller's own id so ethers and the wall scan can match it up.
+const rpcError = (gate, err) =>
+  gate && gate.batched
+    ? gate.forward.map((f) => ({ jsonrpc: "2.0", id: f.id ?? null, error: err }))
+    : { jsonrpc: "2.0", id: (gate && gate.forward[0] && gate.forward[0].id) ?? null, error: err };
+
+// A reverted eth_call is a real answer from the chain and has to reach the browser
+// unchanged; only a transport-level refusal (rate limit, unavailable) is worth asking
+// another gateway about.
+const GATEWAY_RETRY = /limit|too many|throttl|unavail|busy|capacity|rate/i;
+const retryAtNextGateway = (err) => !!err && (err.code === -32005 || err.code === 429 || GATEWAY_RETRY.test(String(err.message || "")));
+
+async function forwardRpc(env, items, batched) {
+  const order = attemptOrder(rpcUrls(env), !!env.BSC_RPC);
+  let lastErr = new Error("no rpc endpoints");
+  for (const url of order) {
+    if (gatewayDown(url)) { lastErr = new Error("gateway cooling down"); continue; }
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(batched ? items : items[0]),
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      });
+      if (!res.ok) throw markGateway(url, new Error(`gateway answered ${res.status}`));
+      const j = await res.json();
+      // a node that answers a 100-member batch with 23 items, or with a bare error
+      // object, must not be passed on as if it had served the reads
+      if (batched && (!Array.isArray(j) || j.length !== items.length)) {
+        throw markGateway(url, new Error(`gateway broke a ${items.length}-member batch`));
+      }
+      if (!batched && j && j.error && retryAtNextGateway(j.error)) {
+        throw markGateway(url, new Error(JSON.stringify(j.error)));
+      }
+      return j;
+    } catch (e) {
+      lastErr = e; // next gateway: the free pool is there precisely for this
+    }
+  }
+  throw lastErr;
+}
+
+async function apiRpc(env, req) {
+  if (!originAllowed(req.headers.get("origin"))) return json({ error: "origin not allowed" }, 403);
+  if (Number(req.headers.get("content-length") || 0) > MAX_BODY_BYTES) return json({ error: `body over ${MAX_BODY_BYTES} bytes` }, 413);
+  let payload;
+  try { payload = await req.json(); } catch { return json({ error: "body must be JSON-RPC" }, 400); }
+  const gate = gateRpc(payload);
+  if (gate.err) return json({ jsonrpc: "2.0", id: null, error: gate.err }, 400);
+  if (!gate.forward.length) return json(gate.answers.length === 1 ? gate.answers[0] : gate.answers);
+  const ip = (req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown").slice(0, 64);
+  if (!spend(ip, gate.weight)) {
+    return json(rpcError(gate, { code: -32005, message: `over ${WINDOW_WEIGHT} reads per minute from this address` }), 429, { "retry-after": "60" });
+  }
+  let out;
+  try {
+    out = await forwardRpc(env, gate.forward, gate.batched);
+  } catch (e) {
+    return json(rpcError(gate, { code: -32000, message: scrub(env, e && e.message || e) }), 502);
+  }
+  // locally refused members are stitched back in: the caller sees its own ids and a
+  // visible hole, never a confidently shorter answer
+  if (!gate.batched) return json(out);
+  return json(Array.isArray(out) ? out.concat(gate.answers) : [out].concat(gate.answers));
+}
+
 // ---- router ----
 
 export default {
@@ -359,6 +544,7 @@ export default {
         case "/api/events":   return await apiEvents(env, url);
         case "/api/push-snapshot": return req.method === "POST" ? await apiPushSnapshot(env, req) : json({ error: "POST only" }, 405);
         case "/api/push-events": return req.method === "POST" ? await apiPushEvents(env, req) : json({ error: "POST only" }, 405);
+        case "/api/rpc": return req.method === "POST" ? await apiRpc(env, req) : json({ error: "POST only" }, 405);
         case "/api/status": {
           // A cold isolate has nothing cached yet. The rebuild has to stamp the
           // cache: measuring age against the initial at = 0 reported a snapshot as
@@ -374,11 +560,13 @@ export default {
           return json({
             name: "WBB worker",
             worm: "the fully on-chain C. elegans brain on BSC mainnet",
-            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/status"],
+            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/rpc (POST, read-only)", "/api/status"],
           });
       }
     } catch (e) {
-      return json({ error: String(e && e.message || e) }, 502);
+      // scrub first: an exception from fetch quotes the gateway URL, and that URL is a
+      // metered key in its path
+      return json({ error: scrub(env, e && e.message || e) }, 502);
     }
   },
 };

@@ -44,9 +44,12 @@ const WALL_ABI = [
 const TOKEN_ABI = ["function name() view returns (string)", "function symbol() view returns (string)", "function decimals() view returns (uint8)"];
 const BRAIN_ABI = ["function tick() view returns (uint256)"];
 
-// publicnode answers bounded getLogs and real JSON-RPC batches; the dataseeds are
-// rotation for those, not the first choice.
+// The worker proxy leads: it forwards this module's 24-call batches and its 2000-block
+// log chunks to the metered gateway, which answers every member in order, and falls back
+// to the free nodes when that gateway is unavailable. The free endpoints stay listed after
+// it so a worker hiccup still leaves the wall readable.
 const RPCS = [
+  "https://api.bscworm.com/api/rpc",
   "https://bsc-rpc.publicnode.com",
   "https://bsc-dataseed1.bnbchain.org",
   "https://bsc-dataseed2.bnbchain.org",

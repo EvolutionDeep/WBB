@@ -134,8 +134,10 @@ synapse-direction guard), `node contracts/scripts/verify_neurons_review.cjs`
 source) and `npx hardhat test` (36 passing). A CI workflow
 (`.github/workflows/ci.yml`) now runs all of it on every push, including a
 byte-for-byte "regenerate then `git diff --exit-code`" step proving the committed
-`worm/data` is reproducible from the spec, plus an offline worker event-decode
-test and a frontend read-only smoke test; `requirements.txt` pins the Python
+`worm/data` is reproducible from the spec, plus two offline worker tests (the event
+decoder's hex words, and the browser read proxy's refuse-every-write policy, with fetch
+stubbed out so nothing is billed) and a frontend read-only smoke test; `requirements.txt`
+pins the Python
 deps. The main brain is now **verified on BscScan**, so its source is externally
 checkable. Still absent: an independent third-party reproduction report and a
 long public commit history — the in-repo evidence is strong, but not yet audited
@@ -268,7 +270,11 @@ beat). The frontend was rebuilt to the new readout/adapter and redeployed
 ### Read-only dashboard
 
 `frontend/` is a **read-only** page by default: it only issues `eth_call` /
-`eth_getLogs` against a public BSC RPC. Nothing it loads on its own ever signs,
+`eth_getLogs`, leading with the project's own read-only worker proxy (`POST /api/rpc`,
+which prefers the metered gateway and fails over to the free BSC nodes) and falling back
+to the free nodes directly if that proxy is unreachable. Every number on screen still
+comes from the chain; the proxy only carries the read, and no gateway key ever ships in
+the bundle. Nothing it loads on its own ever signs,
 connects a wallet, sends a transaction or calls `advance` / `stimulate` / `seed`, and
 no second copy of the brain runs in the browser. Two modules are the documented
 exception, and both sit behind an explicit click of their own: `src/poke.js` (see
@@ -614,13 +620,16 @@ synapse direction right.
 
 The live page is the **read-only dashboard** described above
 (`### Read-only dashboard` and `### 3D viewer`): a Vite + ethers app that reads
-the deployed `WormReadout` / `SenseAdapter` / brain directly from a public BSC
-RPC — no worker in the data path, no second brain in the browser. By default
+the deployed `WormReadout` / `SenseAdapter` / brain over JSON-RPC, leading with the
+project's own read-only worker proxy and falling back to the free public BSC nodes —
+the worker forwards reads only, it holds no state of its own and no second brain runs
+in the browser. By default
 nothing is signed or sent; the two exceptions are both explicitly opt-in and each
 pins one contract and one function — the poke module (`### Poke the worm`) and the
 engraving form behind the wall card (`### The inscription wall on the dashboard`),
 which relay their calls to the visitor's own wallet. The optional Three.js 3D viewer
-only reads view getters, and the time-lapse card (`### Time-lapse`) plays a static
+is a self-running demo of the connectome's shape and issues no chain read at all, and
+the time-lapse card (`### Time-lapse`) plays a static
 recording of replayed on-chain state. `npm test` runs a static read-only guardrail
 covering every module except those two, each of which gets a narrower dedicated
 fence, plus an integrity check on the replay recording and an existence check for
@@ -649,10 +658,11 @@ worm/                 off-chain companion code
   data/               connectome npz, edge list, golden trajectory, layout, weights
   node/               resident daemon (advance only, keeps the animal alive)
 scripts/              analysis + layout generation helpers
-frontend/             Vite + ethers read-only dashboard (direct BSC RPC), opt-in
-                      Three.js 3D viewer (view getters only), opt-in poke, and the
+frontend/             Vite + ethers read-only dashboard (worker proxy first, free BSC
+                      nodes behind it), opt-in
+                      Three.js 3D viewer (a pure demo, no chain read), opt-in poke, and the
                       inscription wall (src/wall.js reads, src/engrave.js writes)
-worker/               Cloudflare Worker: read-only chain aggregation API
+worker/               Cloudflare Worker: read-only chain API + the browser's read proxy
 ```
 
 ## Quick start
@@ -677,17 +687,31 @@ raw connectome: `pip install -e ./cect-src`.
 
 ## Worker API (`worker/`)
 
-A read-only Cloudflare Worker that aggregates chain state into a JSON API. The
-read-only dashboard no longer consumes it (it talks to a public RPC directly);
-this API is a separate optional surface fed by the daemon (the worker never
-signs or sends anything and holds no private key):
+A read-only Cloudflare Worker that aggregates chain state into a JSON API and carries
+the dashboard's reads. The worker never signs or sends anything and holds no private
+key; the one secret it carries is a metered RPC URL, kept as a wrangler secret so the
+key never appears in a public bundle:
 
 - `GET /api/snapshot` — tick, all 302 V/gate/stim/spikeCount, body pose, stateHash
 - `GET /api/events?blocks=N` — recent `Advanced` / `Stimulated` logs (on-chain history)
+- `POST /api/rpc` — read-only JSON-RPC proxy for the browser: `eth_call`, `eth_getLogs`,
+  `eth_blockNumber`, `eth_chainId`, `eth_getBlockByNumber`, single or batched (up to 100
+  members, ids echoed). Anything else — every write, signing or filter method — is
+  refused with `-32601` before a request leaves the worker, a `getLogs` range over
+  20,000 blocks is refused, other sites' origins get 403, and each client address gets a
+  per-minute read budget (per isolate, so a rough guard rather than an exact ledger)
 - `POST /api/push-snapshot`, `POST /api/push-events` — daemon feeds (shared-secret guarded)
 
-Deploy: `cd worker; npx wrangler deploy` (vars: `BRAIN_ADDRESS`, `BSC_RPC`,
-`DAEMON_KEY`; KV `WBB_STORE` for the shared snapshot/event cache).
+Gateway order, everywhere in the worker: `BSC_RPC` (the metered gateway) leads and the
+free dataseeds are the failover, tried only once the preferred endpoint actually failed —
+so running out of compute units degrades a read instead of stopping the heart or blinding
+the page. A gateway that just failed is cooled down for 30 s per isolate, and any error
+text leaving the worker has the gateway URL stripped from it first.
+
+Deploy: `cd worker; npx wrangler deploy` (vars: `BRAIN_ADDRESS`; secrets: `BSC_RPC`,
+`DAEMON_KEY`; KV `WBB_STORE` for the shared snapshot/event cache). Offline tests:
+`node worker/test_events.mjs`, `node worker/test_rpc_gate.mjs` (the proxy's policy with
+fetch stubbed out, so no gateway is billed to check it).
 
 ## Security model
 

@@ -7,6 +7,8 @@
     "dev": "wrangler dev",
     "dev:node": "node dev_server.mjs",
     "deploy": "wrangler deploy",
-    "test:local": "node test_local.mjs"
+    "test:local": "node test_local.mjs",
+    "test:events": "node test_events.mjs",
+    "test:rpc": "node test_rpc_gate.mjs"
   }
 }

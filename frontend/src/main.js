@@ -4,10 +4,12 @@ import { ethers } from "ethers";
  * READ-ONLY dashboard for the on-chain worm.
  *
  * It reads ONLY the deployed WormReadout and SenseAdapter (plus the brain they are
- * bound to and the frozen pool the adapter samples) straight from a public BSC
- * JSON-RPC endpoint. It NEVER signs, NEVER sends a transaction, NEVER calls
- * advance/stimulate/seed, and NEVER runs a second copy of the brain in the browser.
- * Every number on screen is on-chain state served by eth_call / eth_getLogs.
+ * bound to and the frozen pool the adapter samples) over JSON-RPC, leading with the
+ * project's own read-only worker proxy and falling back to the free BSC nodes; every
+ * number still comes from the chain, the worker only carries the read. It NEVER signs,
+ * NEVER sends a transaction, NEVER calls advance/stimulate/seed, and NEVER runs a second
+ * copy of the brain in the browser. Every number on screen is on-chain state served by
+ * eth_call / eth_getLogs.
  *
  * Two write paths exist on the site and neither of them lives in this file: the
  * poke (src/poke.js) and the engraving form (src/engrave.js, reached through the
@@ -23,11 +25,17 @@ const READOUT = "0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E";
 const ADAPTER = "0xbe0C5117f740a9333614D806Bd50C3907186C6fD";
 const SCALE = 1048576n; // Q20
 
-// Public BSC RPC endpoints, tried in order on failure (read-only use only).
+// Where the reads go, tried in order (read-only use only). The project's own worker
+// leads: it forwards to the metered gateway first and to the free BSC nodes after it,
+// which is how the page gets reliable batched eth_call and wide eth_getLogs without a
+// gateway key ever living inside a public bundle. The free endpoints stay behind it on
+// purpose -- if the worker is unreachable the page still reads the chain itself.
+const WORKER_RPC = "https://api.bscworm.com/api/rpc";
 const RPC_SEEDS = (
   localStorage.getItem("wbb_rpc") ||
   import.meta.env.VITE_RPC_URL ||
   [
+    WORKER_RPC,
     "https://bsc-dataseed1.bnbchain.org",
     "https://bsc-dataseed2.bnbchain.org",
     "https://bsc-dataseed3.bnbchain.org",
@@ -106,6 +114,9 @@ const setText = (id, v) => { const n = el(id); if (n) n.textContent = v; };
 
 // ---- provider with read-only endpoint rotation ----
 let activeIdx = -1;
+// the footer says what the browser actually talked to: the worker is a proxy that reads
+// the chain for the page, not a database of its own
+const seedLabel = (url) => (url === WORKER_RPC ? "api.bscworm.com (worker -> BSC)" : new URL(url).host);
 function makeProvider(i) {
   const p = new ethers.JsonRpcProvider(RPC_SEEDS[i], 56n, { staticNetwork: true });
   return p;
@@ -124,7 +135,7 @@ async function withRotation(fn) {
     try {
       const p = makeProvider(i);
       const out = await fn(p);
-      if (activeIdx !== i) { activeIdx = i; el("rpc-host").textContent = new URL(RPC_SEEDS[i]).host; }
+      if (activeIdx !== i) { activeIdx = i; el("rpc-host").textContent = seedLabel(RPC_SEEDS[i]); }
       return out;
     } catch (e) { lastErr = e; }
   }
@@ -147,7 +158,10 @@ async function findLatestEvent(contract, eventName, head, maxBlocks, chunk) {
     const lo = Math.max(floor, from - chunk + 1);
     spans++;
     let logs;
-    try { logs = await contract.queryFilter(contract.interface.getEvent(eventName), lo, from); }
+    // the event NAME is what queryFilter takes; an EventFragment object is not an
+    // accepted argument (ethers 6.17 answers "unknown event name"), and swallowing that
+    // as a rejected span would blame the endpoint for our own bad call
+    try { logs = await contract.queryFilter(eventName, lo, from); }
     catch { errored++; logs = []; }
     if (logs.length) return { log: logs[logs.length - 1], errored, spans };
     from = lo - 1;
@@ -157,7 +171,7 @@ async function findLatestEvent(contract, eventName, head, maxBlocks, chunk) {
 
 async function getRecentEvents(contract, eventName, head, span) {
   const lo = Math.max(0, head - span);
-  try { return await contract.queryFilter(contract.interface.getEvent(eventName), lo, head); }
+  try { return await contract.queryFilter(eventName, lo, head); }
   catch { return []; }
 }
 
@@ -541,7 +555,7 @@ function wireWall() {
 }
 
 async function boot() {
-  el("rpc-host").textContent = new URL(RPC_SEEDS[0]).host;
+  el("rpc-host").textContent = seedLabel(RPC_SEEDS[0]);
   renderEvidence();
   wireViz();
   wirePoke();

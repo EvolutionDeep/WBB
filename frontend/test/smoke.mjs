@@ -190,6 +190,14 @@ has(
   "3D demo loads only its two local anatomy files",
 );
 has(viz.includes("DEMO") && viz.includes("synthetic"), "3D HUD states the motion is a synthetic demo");
+has(
+  viz.includes("function rimMaterial") && viz.includes("membranes"),
+  "3D demo shades the cells with a fresnel membrane rim",
+);
+has(
+  viz.includes("function placeOrgans") && viz.includes("pharynx"),
+  "3D demo draws the pharynx bulb on its own pumping clock",
+);
 absent(viz, "HALTED", "3D demo no longer claims to report chain liveness");
 absent(readFileSync(join(root, "src", "main.js"), "utf8"), "getTarget", "the demo is handed no chain target");
 
@@ -207,6 +215,33 @@ function hasDir(g, a, b) {
   const ia = g.names.indexOf(a), ib = g.names.indexOf(b);
   return g.edges.some(([s, d]) => s === ia && d === ib);
 }
+
+// ---- where the browser reads from ----
+// The project's own read-only worker leads (it prefers the metered gateway and falls
+// back to free nodes there), and a free BSC node stays behind it in the browser too, so
+// a worker hiccup degrades the page instead of blinding it.
+const WORKER_READ = "https://api.bscworm.com/api/rpc";
+const READERS = [["main.js", main], ["wall.js", wallSrc], ["poke.js", poke]];
+for (const [name, src] of READERS) {
+  const at = src.indexOf(WORKER_READ);
+  has(at >= 0, `${name} leads its read endpoints with the worker proxy`);
+  const free = Math.min(...["bsc-dataseed", "publicnode"].map((s) => { const i = src.indexOf(s, at); return i < 0 ? Infinity : i; }));
+  has(free > at, `${name} keeps a free BSC node behind the proxy as failover`);
+}
+// the gateway key belongs to the worker alone: nothing shipped to a visitor may carry one
+for (const [name, src] of [...READERS, ["worm3d.js", viz]]) {
+  has(!/alchemy|infura|ankr|quicknode|pocket\.tech/i.test(src), `${name} holds no gateway credential of its own`);
+}
+has(
+  main.includes("seedLabel(RPC_SEEDS[i])") && main.includes("worker -> BSC"),
+  "the footer says the proxy carries the read, it does not present itself as the source",
+);
+// queryFilter accepts an event NAME (or a topic hash), not an EventFragment object:
+// passing the fragment threw INVALID_ARGUMENT, and every span swallowed it as a
+// rejected log range -- the endpoint got blamed for our own bad call, and the stimulus
+// feed silently rendered a chain full of injections as an empty list.
+has(!/queryFilter\(\s*contract\.interface\.getEvent/.test(main), "log scans pass an event name to queryFilter, not a fragment object");
+has(/queryFilter\(eventName/.test(main), "the live/halted scan and the stimulus feed both read by name");
 
 console.log(`scanned ${srcFiles.length} src modules (read-only guard on ${guardFiles.length}, dedicated fences on ${WRITE_MODULES.join(" and ")}): ${srcFiles.join(", ")}`);
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nFRONTEND READ-ONLY SMOKE PASSED");

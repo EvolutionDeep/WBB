@@ -151,6 +151,47 @@ function glowMaterial(tex) {
   });
 }
 
+/**
+ * A fresnel rim: a shell that only lights up where its surface turns away from the
+ * camera. This is what makes a translucent animal and a glassy cell read as volume
+ * instead of as a flat silhouette, and it costs one extra draw of geometry that is
+ * already being rebuilt for the wave.
+ *
+ * `instanced` picks the variant for an InstancedMesh: three declares `instanceMatrix`
+ * itself for instanced objects, so the attribute must not be redeclared here.
+ */
+function rimMaterial({ instanced, color, power = 2.4, strength = 1 }) {
+  const pos = instanced ? "instanceMatrix * " : "";
+  const nrm = instanced ? "mat3(instanceMatrix) * " : "";
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uColor: { value: new THREE.Color(color) },
+      uPower: { value: power },
+      uStrength: { value: strength },
+    },
+    vertexShader: `
+      uniform float uPower;
+      varying float vRim;
+      void main() {
+        vec4 mv = modelViewMatrix * ${pos}vec4(position, 1.0);
+        vec3 n = normalize(normalMatrix * (${nrm}normal));
+        vec3 v = normalize(-mv.xyz);
+        vRim = pow(1.0 - abs(dot(n, v)), uPower);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uStrength;
+      varying float vRim;
+      void main() {
+        gl_FragColor = vec4(uColor * vRim * uStrength, 1.0);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
 export async function createWormViz({ container }) {
   // ---- static anatomy: the only files this module ever requests ----
   const [graph, layout] = await Promise.all([
@@ -214,7 +255,10 @@ export async function createWormViz({ container }) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.12;
+  // ACES pulls mid-tones down hard compared with the linear response this scene used
+  // to render with, so the exposure has to come back up or the animal reads as a dark
+  // outline: measured at exposure 1.12, 93% of the canvas was plain background.
+  renderer.toneMappingExposure = 1.5;
   container.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -225,7 +269,7 @@ export async function createWormViz({ container }) {
   controls.autoRotate = true;
   controls.autoRotateSpeed = 0.35;
 
-  scene.add(new THREE.AmbientLight(0x35506a, 1.0));
+  scene.add(new THREE.AmbientLight(0x35506a, 1.15));
   const key = new THREE.DirectionalLight(0xbfefff, 1.6);
   key.position.set(6, 10, 8);
   scene.add(key);
@@ -283,6 +327,13 @@ export async function createWormViz({ container }) {
   const body = new THREE.Mesh(bodyGeom, bodyMat);
   scene.add(body);
 
+  // the same membrane lit only at its grazing angles: this is the outline of the
+  // animal, and it shares the geometry the wave already writes
+  const bodyRimMat = rimMaterial({ instanced: false, color: 0x63e6ff, power: 2.2, strength: 0.85 });
+  const bodyRim = new THREE.Mesh(bodyGeom, bodyRimMat);
+  bodyRim.renderOrder = 2;
+  scene.add(bodyRim);
+
   // ---- gut: a second, thinner membrane running inside the same wave ----
   const gutGeom = new THREE.BufferGeometry();
   gutGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(G_SAMPLES * G_RING * 3), 3));
@@ -308,6 +359,33 @@ export async function createWormViz({ container }) {
   });
   const gut = new THREE.Mesh(gutGeom, gutMat);
   scene.add(gut);
+
+  // ---- the two organs that give the silhouette somewhere to look: the pharynx bulb
+  // under the nerve ring and the tail tip. Both ride the same wave, so they cannot
+  // come loose from the body when it bends.
+  const pharynxGeom = new THREE.SphereGeometry(1, 24, 18);
+  const pharynxMat = new THREE.MeshStandardMaterial({
+    color: 0x3d2b16,
+    emissive: 0xffb055,
+    emissiveIntensity: 0.55,
+    roughness: 0.45,
+    transparent: true,
+    opacity: 0.6,
+  });
+  const pharynx = new THREE.Mesh(pharynxGeom, pharynxMat);
+  scene.add(pharynx);
+
+  const tailGeom = new THREE.SphereGeometry(1, 16, 12);
+  const tailMat = new THREE.MeshStandardMaterial({
+    color: 0x3a1a24,
+    emissive: 0xff7a9c,
+    emissiveIntensity: 0.5,
+    roughness: 0.5,
+    transparent: true,
+    opacity: 0.55,
+  });
+  const tailTip = new THREE.Mesh(tailGeom, tailMat);
+  scene.add(tailTip);
 
   // ---- ventral nerve cord and nerve ring: two lit fibres, drawn from the same frame
   function lineGeom(n, closed) {
@@ -337,7 +415,7 @@ export async function createWormViz({ container }) {
   const synMat = new THREE.LineBasicMaterial({
     vertexColors: true,
     transparent: true,
-    opacity: 0.5,
+    opacity: 0.45,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   });
@@ -347,9 +425,11 @@ export async function createWormViz({ container }) {
   const EXC = new THREE.Color(0x2fd8ff);
   const INH = new THREE.Color(0xff5b7f);
   for (let e = 0; e < eCount; e++) {
-    // weak connections fade toward the background instead of disappearing, so the
-    // few heavy synapses stay legible inside a 5,144-edge tangle
-    const b = 0.1 + 0.9 * Math.pow(wAbs[e] / wMax, 0.6);
+    // weak connections fall off so the 5,144-edge tangle keeps the body legible, but
+    // the curve stays shallow enough that the mesh of the network is still visible:
+    // the first attempt at this (exponent 1.15, opacity 0.34) dimmed the whole picture
+    // to a fifth of its former light and left a dark field with one bright rim
+    const b = 0.1 + 0.8 * Math.pow(wAbs[e] / wMax, 0.75);
     const col = eInh[e] ? INH : EXC;
     synCol.setXYZ(e * 2, col.r * b, col.g * b, col.b * b);
     synCol.setXYZ(e * 2 + 1, col.r * b, col.g * b, col.b * b);
@@ -357,19 +437,47 @@ export async function createWormViz({ container }) {
   synCol.needsUpdate = true;
 
   // ---- neuron somata: ellipsoids stretched along the body axis, lit and shaded so
-  // they have volume, with an additive halo on top that grows with activation
+  // they have volume, an additive halo that grows with activation, and a glassy
+  // membrane shell around each one. Sizes are deliberately large enough that the
+  // shading reads on screen: at the previous half-scale a soma was ~4 px and every
+  // refinement in it disappeared into a single pixel.
   const neuronGeom = new THREE.IcosahedronGeometry(1, 2);
   const neuronMat = new THREE.MeshPhysicalMaterial({
     color: 0xffffff,
-    roughness: 0.28,
+    roughness: 0.26,
     metalness: 0.02,
-    clearcoat: 0.8,
-    clearcoatRoughness: 0.25,
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.2,
     emissive: 0x0b1a22,
   });
   const nodes = new THREE.InstancedMesh(neuronGeom, neuronMat, nN);
   nodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  // somata are rewritten every frame and their instance bounds would go stale
+  nodes.frustumCulled = false;
   scene.add(nodes);
+
+  const memRimMat = rimMaterial({ instanced: true, color: 0xa8f2ff, power: 2.8, strength: 0.5 });
+  const membranes = new THREE.InstancedMesh(neuronGeom, memRimMat, nN);
+  membranes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  membranes.frustumCulled = false;
+  scene.add(membranes);
+
+  // soma size follows what the cell is: motor cells and the nerve ring are the large
+  // ones in the animal, cord interneurons the smallest, so the picture has hierarchy
+  const CLASS_EMPHASIS = {
+    cord_motor: 1.3,
+    ring: 1.22,
+    tail: 1.12,
+    sensor_head: 1.04,
+    postdeirid: 1.0,
+    midbody: 0.98,
+    cord_misc: 0.9,
+  };
+  const cellScale = new Float32Array(nN);
+  for (let i = 0; i < nN; i++) {
+    const nb = place[i];
+    cellScale[i] = nb ? (CLASS_EMPHASIS[nb.cls] ?? 1) : 0.0001;
+  }
 
   const tex = glowTexture();
   const haloMat = glowMaterial(tex);
@@ -539,6 +647,19 @@ export async function createWormViz({ container }) {
     rp.needsUpdate = true;
   }
 
+  // the pharynx is the one organ whose own rhythm shows through the body: the real
+  // animal pumps it about twice a second to feed, so the bulb breathes on its own
+  // clock while the rest of the picture rides the crawl wave
+  function placeOrgans(time) {
+    frame(0.075, phaseNow, ampShown, bendShown, fr);
+    const pump = 1 + 0.13 * Math.sin(TAU * 0.5 * time);
+    pharynx.position.set(fr.x, fr.y, fr.z);
+    pharynx.scale.set(fr.r * 0.86 * pump, fr.r * 0.44, fr.r * 0.44);
+    frame(0.962, phaseNow, ampShown, bendShown, fr);
+    tailTip.position.set(fr.x, fr.y, fr.z);
+    tailTip.scale.setScalar(fr.r * 0.6);
+  }
+
   function writeNeurons(time, dt) {
     for (let i = 0; i < nN; i++) {
       const nb = place[i];
@@ -547,6 +668,7 @@ export async function createWormViz({ container }) {
         dummy.scale.setScalar(0.0001);
         dummy.updateMatrix();
         nodes.setMatrixAt(i, dummy.matrix);
+        membranes.setMatrixAt(i, dummy.matrix);
         haloAlpha[i] = 0;
         continue;
       }
@@ -566,13 +688,18 @@ export async function createWormViz({ container }) {
       flash[i] = Math.max(0, flash[i] - dt * 1.9);
 
       const heat = Math.pow(drive[i], 1.8);
-      const sz = 0.05 + (nb.size - 0.7) * 0.06 + heat * 0.055;
+      // a soma large enough to show its own shading, weighted by what the cell is
+      const sz = (0.085 + (nb.size - 0.7) * 0.13 + heat * 0.085) * cellScale[i];
       dummy.position.set(px, py, pz);
       // soma stretched along the body axis: a cell body with a process, not a bead
       dummy.scale.set(sz * 1.35, sz, sz * 0.88);
       dummy.rotation.set(0, 0, 0);
       dummy.updateMatrix();
       nodes.setMatrixAt(i, dummy.matrix);
+      // its membrane, a glass shell a little wider than the cytoplasm it holds
+      dummy.scale.multiplyScalar(1.5);
+      dummy.updateMatrix();
+      membranes.setMatrixAt(i, dummy.matrix);
 
       const b = baseCol[i];
       colTmp.setRGB(b.r, b.g, b.b).multiplyScalar(0.35 + 0.75 * heat);
@@ -584,10 +711,11 @@ export async function createWormViz({ container }) {
       haloCol[i * 3] = b.r;
       haloCol[i * 3 + 1] = b.g;
       haloCol[i * 3 + 2] = b.b;
-      haloSize[i] = sz * (2.6 + 5.4 * heat);
-      haloAlpha[i] = 0.16 + 0.72 * heat;
+      haloSize[i] = sz * (2.4 + 5.0 * heat);
+      haloAlpha[i] = 0.14 + 0.66 * heat;
     }
     nodes.instanceMatrix.needsUpdate = true;
+    membranes.instanceMatrix.needsUpdate = true;
     if (nodes.instanceColor) nodes.instanceColor.needsUpdate = true;
     haloGeom.attributes.position.needsUpdate = true;
     haloGeom.attributes.aColor.needsUpdate = true;
@@ -671,7 +799,10 @@ export async function createWormViz({ container }) {
 
   function loop(now) {
     raf = requestAnimationFrame(loop);
-    const dt = Math.min(0.05, (now - last) / 1000);
+    // clamped at both ends: a system clock jump (a resumed laptop, a tab restored) can
+    // hand back a timestamp older than the last one, and a negative dt would run the
+    // flash decay backwards until every cell in the animal is lit at once
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
     timeNow += dt;
 
@@ -685,6 +816,7 @@ export async function createWormViz({ container }) {
     phaseNow += dt * episode.dir * (0.9 + ampShown * 3.4);
 
     writeBody(phaseNow, ampShown, bendShown);
+    placeOrgans(timeNow);
     writeNeurons(timeNow, dt);
     // half of the 5,144-edge position write is enough: the synapses are faint, and
     // skipping alternate frames is what keeps this smooth on integrated graphics
@@ -775,6 +907,7 @@ export async function createWormViz({ container }) {
   resize();
 
   writeBody(0, 0.28, 0.02);
+  placeOrgans(0);
   writeNeurons(0, 0.016);
   writeSynapses();
   writePulses(0.016);
@@ -788,6 +921,8 @@ export async function createWormViz({ container }) {
       controls.dispose();
       bodyGeom.dispose();
       gutGeom.dispose();
+      pharynxGeom.dispose();
+      tailGeom.dispose();
       cord.geom.dispose();
       ringFibre.geom.dispose();
       synGeom.dispose();
@@ -798,6 +933,10 @@ export async function createWormViz({ container }) {
       dustGeom.dispose();
       bodyMat.dispose();
       gutMat.dispose();
+      pharynxMat.dispose();
+      tailMat.dispose();
+      bodyRimMat.dispose();
+      memRimMat.dispose();
       synMat.dispose();
       neuronMat.dispose();
       pulseMatl.dispose();

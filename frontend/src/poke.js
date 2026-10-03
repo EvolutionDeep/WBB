@@ -28,8 +28,12 @@ const ADAPTER_ABI = [
   "function ampCap() view returns (int256)",
   "event Injected(address indexed from, int256 amp, uint256 idx)",
 ];
-// publicnode answers eth_getLogs for recent ranges; dataseeds throttle them.
+// The worker proxy leads (it forwards the 9000-block scan to the metered gateway, which
+// answers ranges the free dataseeds refuse outright); publicnode and a dataseed stay
+// behind it so the feed survives a worker hiccup. Signing never goes through any of
+// these -- that stays inside the visitor's wallet.
 const LOG_RPCS = [
+  "https://api.bscworm.com/api/rpc",
   "https://bsc-rpc.publicnode.com",
   "https://bsc-dataseed1.bnbchain.org",
 ];
