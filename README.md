@@ -282,6 +282,21 @@ exception, and both sit behind an explicit click of their own: `src/poke.js` (se
 Every other file in `src/` — including the wall's read side `src/wall.js` — is held to
 the absolute ban by the smoke test.
 
+The read runs on **two cadences**, because only three reads can change inside ten seconds:
+the fast beat takes the head, the tick and the three body quantities, and the slow beat
+(60 s) takes everything that cannot go wrong answered once a minute - the pairing and
+`connRoot` (both fixed at deploy), the `Advanced` log scan, the stimulus accumulations,
+the sampled reserve ratio and the two event feeds. The justification is measured, not
+assumed: the heartbeat this page learns from real tick changes was about **73 s** on the
+live chain, and a measured run of the deployed page after the split issued about **37 proxy
+reads per 100 s** from one open tab (~32,000 a day, all of them answered by the metered
+gateway through the proxy - zero reads fell to another host). Before the split the same tab
+walked its twenty-odd reads every ten seconds, on the order of 180,000 reads a day against a
+free Workers allowance of 100,000 that the site's own asset requests also draw on. The page
+prints both intervals inside its own liveness note and says how long ago the advance log was
+scanned, and the tick witness never waits for the log witness: whichever is fresher decides
+LIVE.
+
 Local preview:
 
 ```powershell

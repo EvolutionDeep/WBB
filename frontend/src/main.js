@@ -11,6 +11,11 @@ import { ethers } from "ethers";
  * copy of the brain in the browser. Every number on screen is on-chain state served by
  * eth_call / eth_getLogs.
  *
+ * The read runs on two cadences, because only three reads can change inside ten seconds:
+ * a fast beat takes the head, the tick and the body, and a slow beat takes everything fixed
+ * at deploy or slow enough not to matter - see poll(scanLogs) below for what belongs where
+ * and why.
+ *
  * Two write paths exist on the site and neither of them lives in this file: the
  * poke (src/poke.js) and the engraving form (src/engrave.js, reached through the
  * read-only wall module src/wall.js). Both load by dynamic import behind their own
@@ -302,74 +307,106 @@ function staleSeconds(c) {
 
 const fmtAge = (s) => (s === null ? "—" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}min` : `${(s / 3600).toFixed(1)}h`);
 
-// ---- main poll ----
-const POLL_MS = 10000;
+// ---- the read, split into two cadences ----
+// One measured run of the deployed page: a single open tab issued roughly 37 proxy reads
+// per 100 seconds, and the beat it learned off real tick changes was about 73s. Before
+// this split the same tab walked every one of its twenty-odd reads ten times a minute - on
+// the order of 120 requests a minute, some 180,000 a day, against a free Workers allowance
+// of 100,000 a day that the site itself also draws on. Three reads can genuinely change
+// inside ten seconds: the head, the tick, and the body quantities that arrive with it.
+// Nothing else can: connRoot is immutable, a state hash moves only with a beat, one beat
+// is about 73s so an advance log scan and a 1500-block feed are answered often enough at a
+// minute, and a reserve ratio is not a fast number. So the beat splits: a fast one for what
+// is alive, a slow one for what is merely true. One render path serves both, so a slow beat
+// that fails never blanks what the fast one knows, and the numbers on screen say which beat
+// produced them.
+const FAST_MS = 10000;
+const SLOW_MS = 60000;
 let hist = loadHist();
 let cadence = loadCadence();
-let BRAIN_ADDR = null; // resolved from readout.brain() on the first successful poll
+let BRAIN_ADDR = null; // resolved by the slow beat from readout.brain()
 
-async function poll() {
+// what only the slow beat learns, held between scans so the fast beat can keep
+// rendering an honest verdict rather than blanking the liveness badges out
+const slow = { staleWindow: null, advBlock: null, advErrored: 0, advSpans: 0, eventAge: null, scannedAt: 0 };
+
+async function poll(scanLogs) {
   const dot = el("dot"); const statusText = el("status-text");
   try {
     await withRotation(async (p) => {
       const head = await p.getBlockNumber();
       const readout = asContract(p, READOUT, READOUT_ABI);
-      const [brainAddr, staleWindow] = await Promise.all([readout.brain(), readout.STALE_WINDOW()]);
-      BRAIN_ADDR = brainAddr;
       const adapterAddr = ADAPTER;
-      const brain = asContract(p, brainAddr, BRAIN_ABI);
-      const adapter = asContract(p, adapterAddr, ADAPTER_ABI);
+      // the pairing and the stale constant are immutable, so only the slow beat (and the
+      // very first read, which has no address yet) asks for them
+      if (scanLogs || !BRAIN_ADDR) {
+        const [brainAddr, staleWindow] = await Promise.all([readout.brain(), readout.STALE_WINDOW()]);
+        BRAIN_ADDR = brainAddr;
+        slow.staleWindow = Number(staleWindow);
+      }
+      const brain = asContract(p, BRAIN_ADDR, BRAIN_ABI);
 
-      // read the three quantities + provenance
+      // the three quantities, plus the raw tick off the brain itself so the headline
+      // number is checked against the thing it claims to report instead of being taken on
+      // trust from the readout. (The old code also read brain.stateHash() here and never
+      // showed it: the hash on screen is the readout's own, from the same call.)
       const r = await readout.read();
-      const [connRoot, tickB, stateHash] = await Promise.all([brain.connRoot(), brain.tick(), brain.stateHash()]);
+      const tickB = Number((await brain.tick()).toString());
 
-      // Last advance: a bounded backward scan. Public endpoints reject wide getLogs
-      // ranges, so the span stays short and a rejection is REPORTED, never assumed
-      // to mean the worm stopped.
-      const { log: adv, errored: advErrored, spans: advSpans } = await findLatestEvent(brain, "Advanced", head, 6000, 2000);
-      const lastAdvBlock = adv ? adv.blockNumber : null;
-      const sinceAdv = lastAdvBlock !== null ? head - lastAdvBlock : null;
-      const SW = Number(staleWindow);
+      if (scanLogs) {
+        // Last advance: a bounded backward scan. A span that ERRORS is not the same fact
+        // as a span with no matches: an endpoint can refuse a wide getLogs range outright,
+        // and reading "rejected" as "no advance happened" would render a living worm dead.
+        const { log: adv, errored, spans } = await findLatestEvent(brain, "Advanced", head, 6000, 2000);
+        slow.advBlock = adv ? adv.blockNumber : null;
+        slow.advErrored = errored;
+        slow.advSpans = spans;
+        slow.scannedAt = Date.now();
+        slow.eventAge = null;
+        if (adv) {
+          try {
+            const ab = await p.getBlock(adv.blockNumber);
+            if (ab) slow.eventAge = Math.max(0, Math.round(Date.now() / 1000 - ab.timestamp));
+          } catch { /* no block timestamp; the local witness still stands */ }
+        }
+        // identities and provenance: the pairing is frozen at deploy time and connRoot
+        // never changes at all, so once a minute is plenty to state them
+        const aLink = el("brain-addr"); aLink.href = bscscanAddr(BRAIN_ADDR); aLink.textContent = BRAIN_ADDR;
+        const rLink = el("readout-addr"); rLink.href = bscscanAddr(READOUT); rLink.textContent = short(READOUT, 8);
+        const adLink = el("adapter-addr"); adLink.href = bscscanAddr(adapterAddr); adLink.textContent = short(adapterAddr, 8);
+        setText("conn-root", await brain.connRoot());
+      }
 
-      // Elapsed time since the last real advance, from two independent witnesses:
-      // the block timestamp of the newest Advanced event, and the last tick change
-      // this page observed with plain eth_call. Both measure the same fact, so the
-      // fresher one wins, and either proving life is enough to say LIVE.
+      // Elapsed time since the last real advance, from two independent witnesses: the
+      // block timestamp of the newest Advanced event, and the last tick change this page
+      // observed with plain reads. Both measure the same fact, so the fresher one wins and
+      // either proving life is enough to say LIVE - which is why a log scan up to a minute
+      // old can never be the only thing standing between this page and a false halt.
       cadence = observeTick(cadence, Number(r.tick), Date.now());
       saveCadence(cadence);
       const windowSec = staleSeconds(cadence);
-      let eventAge = null;
-      if (adv) {
-        try {
-          const ab = await p.getBlock(lastAdvBlock);
-          if (ab) eventAge = Math.max(0, Math.round(Date.now() / 1000 - ab.timestamp));
-        } catch { /* no block timestamp; the local witness still stands */ }
-      }
       const localAge = cadence.at ? Math.max(0, Math.round((Date.now() - cadence.at) / 1000)) : null;
-      const witness = [eventAge, localAge].filter((v) => v !== null);
+      const witness = [slow.eventAge, localAge].filter((v) => v !== null);
       const ageSec = witness.length ? Math.min(...witness) : null;
       const observable = ageSec !== null;
       const halted = observable && ageSec > windowSec;
+      const sinceAdv = slow.advBlock === null ? null : head - slow.advBlock;
+      const SW = Number(slow.staleWindow);
+      const scanLag = slow.scannedAt ? Math.max(0, Math.round((Date.now() - slow.scannedAt) / 1000)) : null;
       // what one block is worth in seconds right now, inferred from the two
       // witnesses themselves rather than hard-coded, so the stale-window
       // comparison below is honest about why a block count cannot be the verdict
       const secPerBlock = sinceAdv > 0 && ageSec !== null ? ageSec / sinceAdv : null;
 
-      // identities
-      const aLink = el("brain-addr"); aLink.href = bscscanAddr(brainAddr); aLink.textContent = brainAddr;
-      const rLink = el("readout-addr"); rLink.href = bscscanAddr(READOUT); rLink.textContent = short(READOUT, 8);
-      const adLink = el("adapter-addr"); adLink.href = bscscanAddr(adapterAddr); adLink.textContent = short(adapterAddr, 8);
-      setText("conn-root", connRoot);
       setText("tick", r.tick.toString() + (tickB.toString() === r.tick.toString() ? "" : ` (raw ${tickB})`));
       setText("state-hash", r.stateHash);
       setText("cur-block", head.toLocaleString());
-      setText("last-adv-block", lastAdvBlock === null
-        ? (advErrored ? `not readable here (${advErrored}/${advSpans} log spans rejected)` : "none in the last 6000 blocks")
-        : lastAdvBlock.toLocaleString());
+      setText("last-adv-block", slow.advBlock === null
+        ? (slow.advErrored ? `not readable here (${slow.advErrored}/${slow.advSpans} log spans rejected)` : "none in the last 6000 blocks")
+        : slow.advBlock.toLocaleString());
       setText("since-adv", sinceAdv === null ? "—" : sinceAdv.toLocaleString());
       setText("adv-age", observable
-        ? `${fmtAge(ageSec)} ago (event ${eventAge === null ? "n/a" : fmtAge(eventAge)} / observed ${localAge === null ? "n/a" : fmtAge(localAge)})`
+        ? `${fmtAge(ageSec)} ago (event ${slow.eventAge === null ? "n/a" : fmtAge(slow.eventAge)}${scanLag !== null && slow.eventAge !== null ? `, scanned ${fmtAge(scanLag)} ago` : ""} / observed ${localAge === null ? "n/a" : fmtAge(localAge)})`
         : "no witness yet");
       const cadSec = cadence.gap ? Math.round(cadence.gap / 1000) : null;
       setText("stale-window", `${windowSec}s${cadSec ? ` = ${CADENCE_MULT} x learned ~${cadSec}s beat` : ` = floor, no beat learned yet`}`);
@@ -388,6 +425,7 @@ async function poll() {
         : halted
           ? `Honest stall: nothing has advanced the brain for ${fmtAge(ageSec)}, past the ${windowSec}s window. Only advance() moves the clock and it costs gas - the keeper may have stopped, while injecting through the adapter below still works for anyone.`
           : `Liveness is judged on elapsed time: stalled after ${windowSec}s of silence, which is ${CADENCE_MULT}x the ~${cadSec ?? "?"}s beat this page measured from real tick changes.${blockMath}`;
+      el("stale-note").textContent += ` The tick and the body are read every ${FAST_MS / 1000}s, the advance log re-scanned every ${SLOW_MS / 1000}s, so the fresher witness is the one on screen and the log one is at most that late.`;
 
       // body
       const cur = { tick: Number(r.tick), approach: Number(r.approach), turn: Number(r.turn), speed: Number(r.speed) };
@@ -397,35 +435,41 @@ async function poll() {
       gauge("f-turn", "g-turn", cur.turn);
       gauge("f-speed", "g-speed", cur.speed);
 
-      // stimuli live accumulations
-      const [asel, aser] = await Promise.all([brain.stim(39), brain.stim(40)]);
-      setText("stim-asel", asel.toString());
-      setText("stim-aser", aser.toString());
+      // the slow set: accumulations, the sampled pool ratio and the event feeds. None of
+      // them can be wrong because they were answered once a minute.
+      if (scanLogs) {
+        const adapter = asContract(p, adapterAddr, ADAPTER_ABI);
+        // stimuli live accumulations
+        const [asel, aser] = await Promise.all([brain.stim(39), brain.stim(40)]);
+        setText("stim-asel", asel.toString());
+        setText("stim-aser", aser.toString());
 
-      // pool ratio (read the frozen pair the adapter samples)
-      try {
-        const pairAddr = await adapter.pair();
-        const [ratioLast, primed] = await Promise.all([adapter.lastReserveRatio(), adapter.isPrimed()]);
-        const pair = asContract(p, pairAddr, PAIR_ABI);
-        const [r0, r1] = await pair.getReserves();
-        const ratioNow = (BigInt(r1.toString()) * SCALE) / BigInt(r0.toString());
-        setText("ratio-now", ratioNow.toString() + (primed ? "" : "  (adapter not primed yet)"));
-        setText("ratio-last", ratioLast.toString());
-        const delta = ratioNow - BigInt(ratioLast.toString());
-        setText("ratio-delta", (delta >= 0n ? "+" : "") + delta.toString());
-      } catch {
-        setText("ratio-now", "— (pair read failed)");
+        // pool ratio (read the frozen pair the adapter samples)
+        try {
+          const pairAddr = await adapter.pair();
+          const [ratioLast, primed] = await Promise.all([adapter.lastReserveRatio(), adapter.isPrimed()]);
+          const pair = asContract(p, pairAddr, PAIR_ABI);
+          const [r0, r1] = await pair.getReserves();
+          const ratioNow = (BigInt(r1.toString()) * SCALE) / BigInt(r0.toString());
+          setText("ratio-now", ratioNow.toString() + (primed ? "" : "  (adapter not primed yet)"));
+          setText("ratio-last", ratioLast.toString());
+          const delta = ratioNow - BigInt(ratioLast.toString());
+          setText("ratio-delta", (delta >= 0n ? "+" : "") + delta.toString());
+        } catch {
+          setText("ratio-now", "— (pair read failed)");
+        }
+
+        await buildStimList(p, head, BRAIN_ADDR, adapterAddr, { asel, aser });
       }
-
-      await buildStimList(p, head, brainAddr, adapterAddr, { asel, aser });
 
       dot.className = "ok";
       statusText.textContent = `reading · head ${head.toLocaleString()} · ${halted ? "HALTED" : "LIVE"}`;
     });
   } catch (e) {
-    dot.className = "bad";
-    statusText.textContent = "RPC read failed — retrying";
-    console.error("[read-only poll]", e && e.message ? e.message : e);
+    // a failed slow beat must not steal the status line from the fast one: the fast beat
+    // still runs on its own interval and repaints the verdict every ten seconds
+    if (!scanLogs) { dot.className = "bad"; statusText.textContent = "RPC read failed — retrying"; }
+    console.error(scanLogs ? "[slow read]" : "[read-only poll]", e && e.message ? e.message : e);
   }
 }
 
@@ -561,7 +605,11 @@ async function boot() {
   wirePoke();
   wireReplay();
   wireWall();
-  await poll();
-  setInterval(poll, POLL_MS);
+  // the slow beat runs first: it resolves the brain address the fast beat reads the raw
+  // tick from, and neither interval starts before that first pair has landed
+  await poll(true);
+  await poll(false);
+  setInterval(() => poll(false), FAST_MS);
+  setInterval(() => poll(true), SLOW_MS);
 }
 boot();

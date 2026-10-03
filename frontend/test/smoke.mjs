@@ -243,6 +243,53 @@ has(
 has(!/queryFilter\(\s*contract\.interface\.getEvent/.test(main), "log scans pass an event name to queryFilter, not a fragment object");
 has(/queryFilter\(eventName/.test(main), "the live/halted scan and the stimulus feed both read by name");
 
+// ---- two cadences, one request budget ----
+// A measured run of the deployed page learned a heartbeat of about 73 seconds off real
+// tick changes, yet this page used to walk its whole twenty-odd reads ten times a minute:
+// one open tab was on the order of 120 requests a minute, some 180,000 a day, against a
+// free Workers allowance of 100,000 a day that the site itself also draws on. Only the
+// head, the tick and the body quantities can change inside ten seconds; everything else
+// moved behind scanLogs. A visitor sees no difference and the meter only moves in the
+// Cloudflare dashboard, so nothing but this test notices if a wide log scan creeps back
+// onto the fast beat.
+has(/const FAST_MS = 10000;/.test(main) && /const SLOW_MS = 60000;/.test(main), "the read declares two cadences, not one interval for everything");
+has(!main.includes("POLL_MS"), "the single-cadence poll is gone rather than kept alongside");
+has(/setInterval\(\(\) => poll\(false\), FAST_MS\)/.test(main) && /setInterval\(\(\) => poll\(true\), SLOW_MS\)/.test(main),
+  "the fast beat runs without a log scan and the slow beat with one");
+// Containment is tested by indentation rather than by counting braces: a statement that
+// sits inside one of the gated blocks is indented past the common path, and a statement
+// both beats walk stays at the poll's own level. This also survives the gate being written
+// as `if (scanLogs || !BRAIN_ADDR)`, which is how the first read resolves the pairing.
+const gateStart = main.indexOf("if (scanLogs");
+const lineIndent = (idx) => {
+  const start = main.lastIndexOf("\n", idx) + 1;
+  return ((main.slice(start).match(/^ */) || [""])[0] || "").length;
+};
+const callSites = (needle) => [...main.matchAll(new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, (c) => "\\" + c), "g"))].map((m) => m.index);
+has(gateStart > 0, "the slow beat is gated inside the poll");
+// the cheap half: exactly one call site, and it is on the path both beats walk
+for (const [what, call] of [["the readout read", "await readout.read()"], ["the raw tick cross-check", "await brain.tick()"]]) {
+  const hits = callSites(call);
+  has(hits.length === 1 && lineIndent(hits[0]) === 6, `${what} runs on every beat, gated or not`);
+}
+// the expensive half: exactly one call site each, and it lives inside a gated block
+const SLOW_ONLY = [
+  ["the advance log scan", 'findLatestEvent(brain, "Advanced"'],
+  ["the connectome root", 'setText("conn-root"'],
+  ["the readout pairing", "readout.STALE_WINDOW()"],
+  ["the stimulus accumulations", "brain.stim(39)"],
+  ["the sampled reserve ratio", "await pair.getReserves()"],
+  ["the event feed", "await buildStimList("],
+];
+for (const [what, call] of SLOW_ONLY) {
+  const hits = callSites(call);
+  has(hits.length === 1 && hits[0] > gateStart && lineIndent(hits[0]) >= 8,
+    `${what} is read only on the slow beat (${hits.length} call site(s))`);
+}
+// both witnesses survive the split, and the fresher one still decides
+has(main.includes("[slow.eventAge, localAge]"), "the tick witness and the log witness are both kept, the fresher decides");
+has((main.match(/setText\("state-hash"/g) || []).length === 1, "one beat owns the state hash, so the two cadences cannot disagree on screen");
+has(main.includes("advance log re-scanned every"), "the page tells the visitor both intervals instead of silently reading less");
 console.log(`scanned ${srcFiles.length} src modules (read-only guard on ${guardFiles.length}, dedicated fences on ${WRITE_MODULES.join(" and ")}): ${srcFiles.join(", ")}`);
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nFRONTEND READ-ONLY SMOKE PASSED");
 process.exitCode = fail ? 1 : 0;
