@@ -12,6 +12,10 @@
   Embed on your site:
     <iframe src="https://bscworm.com/badge.html" width="260" height="72"
             style="border:0;border-radius:10px" title="on-chain worm"></iframe>
+
+  Language: en by default, add ?lang=zh for Chinese. The badge is embedded on
+  other people's pages, so it carries its own two languages instead of importing
+  the dashboard's catalogue -- an iframe must stay a single file with no imports.
 -->
 <style>
   html, body { margin: 0; height: 100%; background: transparent; }
@@ -36,13 +40,40 @@
 <body>
   <div class="badge" id="b">
     <span class="dot"></span>
-    <span class="tick">tick <b id="t">…</b></span>
+    <span class="tick"><span id="lab">tick</span> <b id="t">…</b></span>
     <span class="sub" id="s">connecting</span>
     <span class="sub">· <a href="https://bscworm.com" target="_blank" rel="noopener">bscworm.com</a></span>
   </div>
 <script>
 (function () {
   "use strict";
+  // Every word the badge can show, both languages side by side so the two cannot
+  // drift apart. The site name is a name and is not translated.
+  var STRINGS = {
+    title: { en: "on-chain worm · live badge", zh: "链上线虫 · 直播徽章" },
+    tick: { en: "tick", zh: "心跳" },
+    connecting: { en: "connecting", zh: "连接中" },
+    unreachable: { en: "rpc unreachable", zh: "RPC 不可达" },
+    alive: { en: "alive · advanced {age}s ago", zh: "活着 · {age} 秒前推进过" },
+    halted: { en: "halted · no advance {age}s", zh: "停摆 · {age} 秒内没有推进" }
+  };
+  // ?lang= wins, then the choice the visitor made on the dashboard itself, then
+  // English. A third-party page can block iframe storage outright, so the
+  // localStorage read is allowed to fail: the badge must still render.
+  var LANG = (function () {
+    var q = /[?&]lang=([a-z-]+)/i.exec(location.search);
+    var want = q ? q[1] : null;
+    try { if (!want) want = localStorage.getItem("wbb_lang"); } catch (e) { want = null; }
+    return want === "zh" ? "zh" : "en";
+  })();
+  function msg(key, params) {
+    var out = STRINGS[key][LANG] || STRINGS[key].en;
+    return params ? out.replace(/\{(\w+)\}/g, function (_all, name) {
+      return params[name] === undefined || params[name] === null ? "" : String(params[name]);
+    }) : out;
+  }
+  document.documentElement.lang = LANG === "zh" ? "zh-CN" : "en-US";
+  document.title = msg("title");
   // the canonical immutable brain on BSC mainnet (chainId 56)
   var BRAIN = "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3";
   var TICK_SEL = "0x3eaf5d9f";            // keccak("tick()")[:4]
@@ -57,7 +88,9 @@
   var POLL_MS = 60000;
 
   var el = document.getElementById("t"), es = document.getElementById("s"),
-      b = document.getElementById("b");
+      eb = document.getElementById("lab"), b = document.getElementById("b");
+  eb.textContent = msg("tick");
+  es.textContent = msg("connecting");
 
   function ethCall(url) {
     return fetch(url, {
@@ -74,7 +107,7 @@
   var lastTick = null, lastChange = 0;
   function poll(i) {
     i = i || 0;
-    if (i >= ENDPOINTS.length) { es.textContent = "rpc unreachable"; return; }
+    if (i >= ENDPOINTS.length) { es.textContent = msg("unreachable"); return; }
     ethCall(ENDPOINTS[i]).then(function (tick) {
       var now = Date.now();
       if (lastTick === null || tick !== lastTick) { lastChange = now; lastTick = tick; }
@@ -82,7 +115,7 @@
       var fresh = now - lastChange < ALIVE_WINDOW_MS;
       b.className = "badge " + (fresh ? "live" : "halted");
       var age = Math.round((now - lastChange) / 1000);
-      es.textContent = fresh ? "alive · advanced " + age + "s ago" : "halted · no advance " + age + "s";
+      es.textContent = fresh ? msg("alive", { age: age }) : msg("halted", { age: age });
       setTimeout(function () { poll(0); }, POLL_MS);
     }).catch(function () { poll(i + 1); });
   }

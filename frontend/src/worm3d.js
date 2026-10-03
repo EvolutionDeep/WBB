@@ -1,5 +1,20 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { t, localeTag } from "./i18n.js";
+
+// The neuron class tokens come out of layout.json and stay what they are in the data;
+// only their caption is looked up, so an unknown class still shows its own name.
+const CLS_KEYS = {
+  sensor_head: "c00.cls_sensor_head",
+  ring: "c00.cls_ring",
+  cord_misc: "c00.cls_cord_misc",
+  cord_motor: "c00.cls_cord_motor",
+  midbody: "c00.cls_midbody",
+  postdeirid: "c00.cls_postdeirid",
+  tail: "c00.cls_tail",
+};
+const clsLabel = (c) =>
+  (c === undefined || c === null ? t("c00.tip_unplaced") : CLS_KEYS[c] ? t(CLS_KEYS[c]) : String(c));
 
 /**
  * DEMO 3D viewer for the worm's connectome.
@@ -567,14 +582,14 @@ export async function createWormViz({ container }) {
   // ---- behaviour: a scripted, deterministic sequence of crawl / pause / reversal /
   // turn episodes, the way the animal's own bout structure looks from outside
   const EPISODES = [
-    { name: "forward crawl", dir: 1, amp: 0.3, bend: 0.03, tMin: 5, tMax: 11 },
-    { name: "pause", dir: 0, amp: 0.05, bend: 0.08, tMin: 1.5, tMax: 3.5 },
-    { name: "reversal", dir: -1, amp: 0.24, bend: -0.2, tMin: 2.5, tMax: 5 },
-    { name: "turn", dir: 0, amp: 0.12, bend: 0.5, tMin: 2, tMax: 4 },
-    { name: "slow crawl", dir: 1, amp: 0.13, bend: -0.06, tMin: 4, tMax: 9 },
+    { nameKey: "c00.ep_forward_crawl", dir: 1, amp: 0.3, bend: 0.03, tMin: 5, tMax: 11 },
+    { nameKey: "c00.ep_pause", dir: 0, amp: 0.05, bend: 0.08, tMin: 1.5, tMax: 3.5 },
+    { nameKey: "c00.ep_reversal", dir: -1, amp: 0.24, bend: -0.2, tMin: 2.5, tMax: 5 },
+    { nameKey: "c00.ep_turn", dir: 0, amp: 0.12, bend: 0.5, tMin: 2, tMax: 4 },
+    { nameKey: "c00.ep_slow_crawl", dir: 1, amp: 0.13, bend: -0.06, tMin: 4, tMax: 9 },
   ];
   const W = [0.38, 0.16, 0.16, 0.1, 0.2];
-  const episode = { idx: 0, name: EPISODES[0].name, dir: 1, amp: 0.3, bend: 0.03, left: 0 };
+  const episode = { idx: 0, nameKey: EPISODES[0].nameKey, dir: 1, amp: 0.3, bend: 0.03, left: 0 };
   function nextEpisode() {
     let x = rnd();
     let i = 0;
@@ -584,7 +599,7 @@ export async function createWormViz({ container }) {
     }
     const ep = EPISODES[i];
     episode.idx = i;
-    episode.name = ep.name;
+    episode.nameKey = ep.nameKey;
     episode.dir = ep.dir;
     // a turn alternates its sign, which is what makes an omega turn look like one
     episode.bend = i === 3 ? (rnd() < 0.5 ? -1 : 1) * Math.abs(ep.bend) : ep.bend;
@@ -857,18 +872,20 @@ export async function createWormViz({ container }) {
 
   function hud() {
     if ((frames & 7) !== 0) return; // text every 8th frame: the DOM is the slow part
-    const dirTxt = episode.dir > 0 ? "forward" : episode.dir < 0 ? "reverse" : "no translation";
+    // every line is looked up on the way in, so a language switch is picked up by the
+    // next frame and this loop never has to be told it happened
+    const dirTxt = episode.dir > 0 ? t("c00.dir_forward") : episode.dir < 0 ? t("c00.dir_reverse") : t("c00.dir_none");
     const firing = (() => {
       let n = 0;
       for (let i = 0; i < nN; i++) if (flash[i] > 0.25) n++;
       return n;
     })();
     hudEl.innerHTML =
-      `<div class="viz-line demo"><b>DEMO</b> — nothing here is read from the chain; the animation runs on its own</div>` +
-      `<div class="viz-line"><b>episode</b> ${episode.name} · <b>wave</b> ${ampShown.toFixed(3)} · ${dirTxt} · <b>bend</b> ${bendShown.toFixed(2)}</div>` +
-      `<div class="viz-line"><b>anatomy</b> ${nN} neurons · ${eCount.toLocaleString("en-US")} directed synapses · real positions</div>` +
-      `<div class="viz-line"><b>signals</b> ${N_PULSE} pulses running pre → post · ${firing} cells lit right now</div>` +
-      `<div class="viz-line">drive, brightness and timing are synthetic — the animal's live state is on card 01</div>`;
+      `<div class="viz-line demo">${t("c00.hud_demo")}</div>` +
+      `<div class="viz-line">${t("c00.hud_episode", { name: t(episode.nameKey), wave: ampShown.toFixed(3), dir: dirTxt, bend: bendShown.toFixed(2) })}</div>` +
+      `<div class="viz-line">${t("c00.hud_anatomy", { n: nN, e: eCount.toLocaleString(localeTag()) })}</div>` +
+      `<div class="viz-line">${t("c00.hud_signals", { p: N_PULSE, f: firing })}</div>` +
+      `<div class="viz-line">${t("c00.hud_synthetic")}</div>`;
   }
 
   // hover readout: which cell, what class, how strongly it is being driven
@@ -883,7 +900,9 @@ export async function createWormViz({ container }) {
     if (hit.length && hit[0].instanceId !== undefined) {
       const i = hit[0].instanceId;
       const nb = place[i] || {};
-      tipEl.textContent = `${names[i]} · ${nb.cls ?? "unplaced"} · t ${nb.t ?? "—"} · demo drive ${(drive[i] * 100).toFixed(0)}%`;
+      tipEl.textContent = t("c00.tip", {
+        name: names[i], cls: clsLabel(nb.cls), t: nb.t ?? "—", pct: (drive[i] * 100).toFixed(0),
+      });
       tipEl.style.opacity = "1";
     } else {
       tipEl.textContent = "";

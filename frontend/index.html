@@ -36,6 +36,18 @@
   }
   .links a:hover { border-color: rgba(53,224,255,0.6); background: rgba(53,224,255,0.12); }
   .links a b { color: #dff5ff; font-weight: 400; }
+  /* the language switch sits with the links and looks like them: it changes nothing on
+     the chain, it only repaints the words on this page */
+  .links button {
+    font: inherit; font-size: 11px; letter-spacing: 0.1em; cursor: pointer;
+    color: var(--cy); background: rgba(53,224,255,0.05); border: 1px solid rgba(53,224,255,0.22);
+    border-radius: 2px; padding: 3px 10px;
+  }
+  .links button:hover { border-color: rgba(53,224,255,0.6); background: rgba(53,224,255,0.12); }
+  /* Chinese sets tighter: a 0.1em letterspace on Han characters just makes words float apart */
+  html[lang="zh-CN"] .tagline, html[lang="zh-CN"] .note, html[lang="zh-CN"] .links a,
+  html[lang="zh-CN"] .links button, html[lang="zh-CN"] h1 { letter-spacing: 0; }
+  html[lang="zh-CN"] .card h2 { letter-spacing: 0.06em; }
 
   .grid {
     max-width: 1180px; margin: 0 auto; display: grid; gap: 14px;
@@ -180,8 +192,8 @@
 </head>
 <body>
 <header>
-  <h1>Worm<b>Readout</b> · read-only lens</h1>
-  <div class="tagline">
+  <h1 data-i18n-html="head.h1">Worm<b>Readout</b> · read-only lens</h1>
+  <div class="tagline" data-i18n-html="head.tagline">
     a permissionless on-chain C. elegans on BSC mainnet · this page <b>reads</b> the deployed
     WormReadout &amp; SenseAdapter and never advances the animal by itself · the only two ways anything
     is ever spent here are the opt-in poke and the opt-in engraving, each pinned to one contract and
@@ -190,17 +202,18 @@
   <nav class="links">
     <a href="https://x.com/WormBrainBsc" target="_blank" rel="noopener me">X · <b>@WormBrainBsc</b></a>
     <a href="https://github.com/EvolutionDeep/WBB" target="_blank" rel="noopener me">GitHub · <b>EvolutionDeep/WBB</b></a>
+    <button id="lang-toggle" type="button">切换中文</button>
   </nav>
 </header>
 
 <div class="grid">
   <!-- 0. 3D VIEWER (self-running demo of the connectome) -->
   <section class="card viz-card" id="card-viz">
-    <h2><span class="num">00</span> · 3D worm — the connectome, animated as a demo</h2>
+    <h2><span class="num">00</span> · <span data-i18n="c00.title">3D worm — the connectome, animated as a demo</span></h2>
     <div class="viz-bar">
-      <button id="viz-start" type="button">START 3D</button>
-      <button id="viz-stop" type="button">STOP</button>
-      <span class="note">
+      <button id="viz-start" type="button" data-i18n="c00.btn_start">START 3D</button>
+      <button id="viz-stop" type="button" data-i18n="c00.btn_stop">STOP</button>
+      <span class="note" data-i18n="c00.note">
         a pure visualisation. It loads three.js on demand plus the anatomy from
         data/graph.json and data/layout.json — 302 neurons at their real positions and the
         5,144 directed synapses — and then runs forever, crawling, reversing and turning.
@@ -209,71 +222,71 @@
       </span>
     </div>
     <div id="viz-wrap">
-      <div class="viz-off" id="viz-off">3D demo is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its name and its class.</div>
+      <div class="viz-off" id="viz-off" data-i18n="c00.idle">3D demo is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its name and its class.</div>
     </div>
     <div class="viz-legend">
-      <span><i style="background:#2fd8ff"></i>excitatory synapse (pre → post)</span>
-      <span><i style="background:#ff5b7f"></i>inhibitory synapse (pre → post)</span>
-      <span><s style="background:#7ef0ff"></s>nerve ring</span>
-      <span><s style="background:#ffd27a"></s>head sensory</span>
-      <span><s style="background:#6bff9e"></s>motor</span>
-      <span><s style="background:#93b9ff"></s>cord interneuron</span>
-      <span><s style="background:#c58bff"></s>postdeirid</span>
-      <span><s style="background:#ff7a9c"></s>tail</span>
+      <span><i style="background:#2fd8ff"></i><span data-i18n="c00.lg_exc">excitatory synapse (pre → post)</span></span>
+      <span><i style="background:#ff5b7f"></i><span data-i18n="c00.lg_inh">inhibitory synapse (pre → post)</span></span>
+      <span><s style="background:#7ef0ff"></s><span data-i18n="c00.lg_ring">nerve ring</span></span>
+      <span><s style="background:#ffd27a"></s><span data-i18n="c00.lg_head">head sensory</span></span>
+      <span><s style="background:#6bff9e"></s><span data-i18n="c00.lg_motor">motor</span></span>
+      <span><s style="background:#93b9ff"></s><span data-i18n="c00.lg_cord">cord interneuron</span></span>
+      <span><s style="background:#c58bff"></s><span data-i18n="c00.lg_post">postdeirid</span></span>
+      <span><s style="background:#ff7a9c"></s><span data-i18n="c00.lg_tail">tail</span></span>
     </div>
   </section>
 
   <!-- 1. IDENTITY -->
   <section class="card" id="card-identity">
-    <h2><span class="num">01</span> · Identity</h2>
-    <div class="row"><span class="k">STATUS</span><span id="status-badge"><span class="badge live">CONNECTING…</span></span></div>
-    <div class="row"><span class="k">BRAIN</span><a class="v mono" id="brain-addr" target="_blank" rel="noopener">—</a></div>
-    <div class="row"><span class="k">CONN ROOT</span><span class="v mono" id="conn-root">—</span></div>
-    <div class="row"><span class="k">TICK</span><span class="v" id="tick">—</span></div>
-    <div class="row"><span class="k">STATE HASH</span><span class="v mono" id="state-hash">—</span></div>
-    <div class="row"><span class="k">LAST ADVANCE BLOCK</span><span class="v" id="last-adv-block">—</span></div>
-    <div class="row"><span class="k">CURRENT BLOCK</span><span class="v" id="cur-block">—</span></div>
-    <div class="row"><span class="k">BLOCKS SINCE ADVANCE</span><span class="v" id="since-adv">—</span></div>
-    <div class="row"><span class="k">ADVANCE AGE</span><span class="v" id="adv-age">—</span></div>
-    <div class="row"><span class="k">STALE WINDOW</span><span class="v" id="stale-window">—</span></div>
-    <div class="note" id="stale-note">Liveness is judged on elapsed time against the heartbeat this page has measured, not on a block count: BSC now seals a block in well under a second, so a stale window written in blocks no longer means what it did.</div>
+    <h2><span class="num">01</span> · <span data-i18n="c01.title">Identity</span></h2>
+    <div class="row"><span class="k" data-i18n="c01.k_status">STATUS</span><span id="status-badge"><span class="badge live" data-i18n="c01.connecting">CONNECTING…</span></span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_brain">BRAIN</span><a class="v mono" id="brain-addr" target="_blank" rel="noopener">—</a></div>
+    <div class="row"><span class="k" data-i18n="c01.k_conn">CONN ROOT</span><span class="v mono" id="conn-root">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_tick">TICK</span><span class="v" id="tick">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_hash">STATE HASH</span><span class="v mono" id="state-hash">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_advblock">LAST ADVANCE BLOCK</span><span class="v" id="last-adv-block">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_curblock">CURRENT BLOCK</span><span class="v" id="cur-block">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_since">BLOCKS SINCE ADVANCE</span><span class="v" id="since-adv">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_age">ADVANCE AGE</span><span class="v" id="adv-age">—</span></div>
+    <div class="row"><span class="k" data-i18n="c01.k_window">STALE WINDOW</span><span class="v" id="stale-window">—</span></div>
+    <div class="note" id="stale-note" data-i18n="c01.note_default">Liveness is judged on elapsed time against the heartbeat this page has measured, not on a block count: BSC now seals a block in well under a second, so a stale window written in blocks no longer means what it did.</div>
   </section>
 
   <!-- 2. BODY -->
   <section class="card" id="card-body">
-    <h2><span class="num">02</span> · Body (only read() → approach / turn / speed)</h2>
+    <h2><span class="num">02</span> · <span data-i18n="c02.title">Body (only read() → approach / turn / speed)</span></h2>
     <canvas id="body-canvas" width="440" height="300"></canvas>
     <div class="gauges">
-      <div class="gauge"><span class="k">APPROACH</span><div class="v" id="g-approach">—</div><div class="bar"><div class="fill" id="f-approach"></div></div></div>
-      <div class="gauge"><span class="k">TURN</span><div class="v mag" id="g-turn">—</div><div class="bar"><div class="fill" id="f-turn" style="background:var(--mag)"></div></div></div>
-      <div class="gauge"><span class="k">SPEED</span><div class="v" id="g-speed" style="color:var(--amber)"><span></span></div><div class="bar"><div class="fill" id="f-speed" style="background:var(--amber)"></div></div></div>
+      <div class="gauge"><span class="k" data-i18n="c02.approach">APPROACH</span><div class="v" id="g-approach">—</div><div class="bar"><div class="fill" id="f-approach"></div></div></div>
+      <div class="gauge"><span class="k" data-i18n="c02.turn">TURN</span><div class="v mag" id="g-turn">—</div><div class="bar"><div class="fill" id="f-turn" style="background:var(--mag)"></div></div></div>
+      <div class="gauge"><span class="k" data-i18n="c02.speed">SPEED</span><div class="v" id="g-speed" style="color:var(--amber)"><span></span></div><div class="bar"><div class="fill" id="f-speed" style="background:var(--amber)"></div></div></div>
     </div>
-    <div class="note">x = turn (−10000 left ↔ 10000 right), y = approach (−10000 down ↔ 10000 up), size = |speed|.
+    <div class="note" data-i18n="c02.note">x = turn (−10000 left ↔ 10000 right), y = approach (−10000 down ↔ 10000 up), size = |speed|.
       A point is drawn only for a NEW on-chain tick — the page never fabricates a trajectory between beats.</div>
   </section>
 
   <!-- 3. STIMULI -->
   <section class="card" id="card-stim">
-    <h2><span class="num">03</span> · Stimuli (inject / stimulate / sample)</h2>
-    <div class="row"><span class="k">stim(ASEL) live</span><span class="v" id="stim-asel">—</span></div>
-    <div class="row"><span class="k">stim(ASER) live</span><span class="v mag" id="stim-aser">—</span></div>
-    <div class="row"><span class="k">POOL RATIO (now, Q20)</span><span class="v" id="ratio-now">—</span></div>
-    <div class="row"><span class="k">LAST SAMPLED RATIO</span><span class="v" id="ratio-last">—</span></div>
-    <div class="row"><span class="k">Δ vs PREVIOUS BEAT</span><span class="v" id="ratio-delta">—</span></div>
-    <div class="note">Stimulation accumulates within a block; a later same-block current is ADDED, it never overwrites.</div>
+    <h2><span class="num">03</span> · <span data-i18n="c03.title">Stimuli (inject / stimulate / sample)</span></h2>
+    <div class="row"><span class="k" data-i18n="c03.k_asel">stim(ASEL) live</span><span class="v" id="stim-asel">—</span></div>
+    <div class="row"><span class="k" data-i18n="c03.k_aser">stim(ASER) live</span><span class="v mag" id="stim-aser">—</span></div>
+    <div class="row"><span class="k" data-i18n="c03.k_ratio">POOL RATIO (now, Q20)</span><span class="v" id="ratio-now">—</span></div>
+    <div class="row"><span class="k" data-i18n="c03.k_last">LAST SAMPLED RATIO</span><span class="v" id="ratio-last">—</span></div>
+    <div class="row"><span class="k" data-i18n="c03.k_delta">Δ vs PREVIOUS BEAT</span><span class="v" id="ratio-delta">—</span></div>
+    <div class="note" data-i18n="c03.note">Stimulation accumulates within a block; a later same-block current is ADDED, it never overwrites.</div>
     <div class="list" id="stim-list"></div>
   </section>
 
   <!-- 3b. POKE (opt-in write path) -->
   <section class="card" id="card-poke">
-    <h2><span class="num">04</span> · Poke the worm (opt-in · your wallet · your gas)</h2>
+    <h2><span class="num">04</span> · <span data-i18n="c04.title">Poke the worm (opt-in · your wallet · your gas)</span></h2>
     <div class="viz-bar">
-      <button id="poke-enable" type="button">ENABLE POKE UI</button>
-      <button id="poke-food" type="button" disabled>POKE +2.0 → ASEL (food-like)</button>
-      <button id="poke-avert" type="button" disabled>POKE −2.0 → ASER (repellent)</button>
+      <button id="poke-enable" type="button" data-i18n="c04.btn_enable">ENABLE POKE UI</button>
+      <button id="poke-food" type="button" disabled data-i18n="c04.btn_food">POKE +2.0 → ASEL (food-like)</button>
+      <button id="poke-avert" type="button" disabled data-i18n="c04.btn_avert">POKE −2.0 → ASER (repellent)</button>
     </div>
-    <div class="row"><span class="k">RESULT</span><span id="poke-status" class="note">disabled — this page stays read-only until you enable the poke UI</span></div>
-    <div class="note">
+    <div class="row"><span class="k" data-i18n="c04.k_result">RESULT</span><span id="poke-status" class="note" data-i18n="c04.status_off">disabled — this page stays read-only until you enable the poke UI</span></div>
+    <div class="note" data-i18n="c04.note">
       The only write path on this site: it encodes exactly one call, SenseAdapter.inject(int256), signed
       and paid by YOUR own wallet (a few ten-thousandths of BNB). The brain is passive — your current
       queues into the chemoreceptor and bites on the NEXT advance by a keeper node. Nothing on this
@@ -284,21 +297,21 @@
 
   <!-- 4b. INSCRIPTION WALL (read-only view of the immutable WormLedger) -->
   <section class="card wall-card" id="card-wall">
-    <h2><span class="num">05</span> · Inscription wall (read-only until you arm it)</h2>
+    <h2><span class="num">05</span> · <span data-i18n="c05.title">Inscription wall (read-only until you arm it)</span></h2>
     <div class="viz-bar">
-      <button id="wall-load" type="button">READ THE WALL</button>
-      <button id="wall-enable" type="button" disabled>ENABLE ENGRAVING</button>
-      <button id="wall-rescan" type="button">RE-SCAN FROM GENESIS</button>
+      <button id="wall-load" type="button" data-i18n="c05.btn_read">READ THE WALL</button>
+      <button id="wall-enable" type="button" disabled data-i18n="c05.btn_enable">ENABLE ENGRAVING</button>
+      <button id="wall-rescan" type="button" data-i18n="c05.btn_rescan">RE-SCAN FROM GENESIS</button>
     </div>
-    <div class="row"><span class="k">WALL</span><span id="wall-status" class="v">not loaded — nothing is read from this card until you press READ THE WALL</span></div>
-    <div class="row"><span class="k">PRICE PER SLOT (MUST ARRIVE)</span><span class="v" id="wall-price">—</span></div>
-    <div class="row"><span class="k">CONTRACT FLOOR (PRICE ÷ 0.97)</span><span class="v" id="wall-min">—</span></div>
-    <div class="row"><span class="k">SLOT SPAN</span><span class="v" id="wall-ticks">—</span></div>
-    <div class="row"><span class="k">NEWEST SLOT</span><span class="v" id="wall-cur-slot">—</span></div>
-    <div class="row"><span class="k">ENGRAVED SO FAR</span><span class="v mag" id="wall-taken">—</span></div>
-    <div class="row"><span class="k">LOG SCAN COVERAGE</span><span class="v mono" id="wall-scan">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_wall">WALL</span><span id="wall-status" class="v" data-i18n="c05.status_off">not loaded — nothing is read from this card until you press READ THE WALL</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_price">PRICE PER SLOT (MUST ARRIVE)</span><span class="v" id="wall-price">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_floor">CONTRACT FLOOR (PRICE ÷ 0.97)</span><span class="v" id="wall-min">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_span">SLOT SPAN</span><span class="v" id="wall-ticks">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_newest">NEWEST SLOT</span><span class="v" id="wall-cur-slot">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_taken">ENGRAVED SO FAR</span><span class="v mag" id="wall-taken">—</span></div>
+    <div class="row"><span class="k" data-i18n="c05.k_scan">LOG SCAN COVERAGE</span><span class="v mono" id="wall-scan">—</span></div>
     <div class="wall-grid" id="wall-grid"></div>
-    <div class="note">
+    <div class="note" data-i18n="c05.note">
       The most recent slots of the animal's life — up to the last 24, fewer while the wall is
       young — each one purchasable forever. A magenta brick carries
       text that is already on-chain and can never be edited, overwritten or removed; the paid token is
@@ -316,26 +329,26 @@
 
     <div class="wall-form hidden" id="wall-form">
       <div class="viz-bar">
-        <button id="wall-connect" type="button">ATTACH WALLET</button>
+        <button id="wall-connect" type="button" data-i18n="c05f.btn_connect">ATTACH WALLET</button>
       </div>
       <div class="wall-fields">
-        <label>SLOT (AN ALREADY-LIVED ONE)
+        <label><span data-i18n="c05f.slot_label">SLOT (AN ALREADY-LIVED ONE)</span>
           <input id="wall-slot" type="number" min="0" step="1" value="0" />
         </label>
-        <label>TEXT · 1–64 PRINTABLE ASCII
-          <input id="wall-text" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="what should outlive the worm" />
+        <label><span data-i18n="c05f.text_label">TEXT · 1–64 PRINTABLE ASCII</span>
+          <input id="wall-text" type="text" maxlength="64" autocomplete="off" spellcheck="false" data-i18n-placeholder="c05f.text_ph" placeholder="what should outlive the worm" />
         </label>
-        <label>TOKEN TO SEND (INCLUDING THE 3% TAX)
+        <label><span data-i18n="c05f.token_label">TOKEN TO SEND (INCLUDING THE 3% TAX)</span>
           <input id="wall-nominal" type="text" inputmode="decimal" autocomplete="off" />
         </label>
       </div>
-      <div class="row"><span class="k">CHECK</span><span id="wall-preview" class="note">type above — the contract's own text rule is applied here before anything is signed</span></div>
-      <div class="row"><span class="k">WALLET</span><span class="v" id="wall-wallet">no wallet attached</span></div>
-      <div class="row"><span class="k">ALLOWANCE</span><span class="v" id="wall-allow">—</span></div>
+      <div class="row"><span class="k" data-i18n="c05f.check">CHECK</span><span id="wall-preview" class="note" data-i18n="c05f.check_off">type above — the contract's own text rule is applied here before anything is signed</span></div>
+      <div class="row"><span class="k" data-i18n="c05f.wallet">WALLET</span><span class="v" id="wall-wallet" data-i18n="c05f.wallet_none">no wallet attached</span></div>
+      <div class="row"><span class="k" data-i18n="c05f.allow">ALLOWANCE</span><span class="v" id="wall-allow">—</span></div>
       <div class="viz-bar" style="margin-top: 8px">
-        <button id="wall-send" type="button">ENGRAVE (approve + inscribe)</button>
+        <button id="wall-send" type="button" data-i18n="c05f.btn_send">ENGRAVE (approve + inscribe)</button>
       </div>
-      <div class="note">
+      <div class="note" data-i18n="c05f.note">
         Arming this form loads a second module that can encode exactly two calls:
         ERC20.approve(ledger, amount) and WormLedger.inscribe(slot, text, nominal). It never touches
         the brain, never takes a key, and every signature is confirmed inside your own wallet. A slot
@@ -346,13 +359,13 @@
 
   <!-- 3c. TIME-LAPSE (recorded on-chain past, static data, zero RPC) -->
   <section class="card" id="card-replay">
-    <h2><span class="num">06</span> · Time-lapse (the worm's recorded past)</h2>
+    <h2><span class="num">06</span> · <span data-i18n="c06.title">Time-lapse (the worm's recorded past)</span></h2>
     <div class="viz-bar" id="replay-bar">
-      <button id="replay-load" type="button">LOAD RECORDING</button>
+      <button id="replay-load" type="button" data-i18n="c06.btn_load">LOAD RECORDING</button>
     </div>
-    <div class="row"><span class="k">REPLAY</span><span id="replay-status" class="note">not loaded — ~0.4 MB of replayed on-chain frames, fetched only on click</span></div>
+    <div class="row"><span class="k" data-i18n="c06.k_replay">REPLAY</span><span id="replay-status" class="note" data-i18n="c06.status_off">not loaded — ~0.4 MB of replayed on-chain frames, fetched only on click</span></div>
     <div id="replay-stage" class="viz-wrap"></div>
-    <div class="note">
+    <div class="note" data-i18n="c06.note">
       Every frame is a historical eth_call replay of the brain's real state at that heartbeat's
       block — 302 membrane voltages plus body pose, nothing simulated or interpolated. The
       undulating silhouette is a schematic of the four recorded pose scalars, not a shape fit.
@@ -362,18 +375,18 @@
 
   <!-- 4. EVIDENCE -->
   <section class="card" id="card-evidence">
-    <h2><span class="num">07</span> · Evidence (recorded mainnet verifications)</h2>
+    <h2><span class="num">07</span> · <span data-i18n="c07.title">Evidence (recorded mainnet verifications)</span></h2>
     <div id="evidence"></div>
-    <div class="note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
+    <div class="note" data-i18n="c07.note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
   </section>
 </div>
 
 <footer>
-  <span><span id="dot"></span><span id="status-text">booting</span></span>
+  <span><span id="dot"></span><span id="status-text" data-i18n="foot.booting">booting</span></span>
   <span>RPC <span id="rpc-host" class="v mono">—</span></span>
   <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
   <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
-  <span class="ro">READ-ONLY BY DEFAULT · TWO OPT-IN WRITE PATHS (POKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
+  <span class="ro" data-i18n="foot.ro">READ-ONLY BY DEFAULT · TWO OPT-IN WRITE PATHS (POKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
 </footer>
 
 <script type="module" src="/src/main.js"></script>

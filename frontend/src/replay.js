@@ -12,6 +12,7 @@
  * dynamically imported only when the visitor presses PLAY, so the
  * default page never even downloads the 0.4 MB recording.
  */
+import { t, label, take, onLangChange } from "./i18n.js";
 
 const DATA_URL = "/data/replay.json";
 const N = 302;
@@ -48,21 +49,23 @@ function el(id) { return document.getElementById(id); }
 
 export async function start(container) {
   const meta = { note: el("replay-status") };
-  const setNote = (t) => { if (meta.note) meta.note.textContent = t; };
-  setNote("loading the recording…");
+  // the note is painted from the dictionary and carries its numbers as parameters, so a
+  // language switch can redo the sentence around them
+  const setNote = (key, params) => { if (meta.note) label(take(meta.note), key, params); };
+  setNote("c06.loading");
 
   const raw = await fetch(DATA_URL);
-  if (!raw.ok) throw new Error("replay.json not available (" + raw.status + ")");
+  if (!raw.ok) throw new Error(t("c06.err_fetch", { status: raw.status }));
   const data = await raw.json();
   const frames = data.frames;
-  if (!Array.isArray(frames) || !frames.length) throw new Error("empty recording");
+  if (!Array.isArray(frames) || !frames.length) throw new Error(t("c06.err_empty"));
 
   // --- controls -------------------------------------------------------------
   const bar = el("replay-bar");
   if (bar) bar.innerHTML = `
-    <button id="replay-play" type="button">▶ PLAY</button>
-    <button id="replay-step" type="button">STEP +1</button>
-    <label class="note">speed <input id="replay-speed" type="range" min="1" max="30" value="8"> <span id="replay-fps" class="v mono">8/s</span></label>
+    <button id="replay-play" type="button" data-i18n="c06.btn_play">${t("c06.btn_play")}</button>
+    <button id="replay-step" type="button" data-i18n="c06.btn_step">${t("c06.btn_step")}</button>
+    <label class="note"><span data-i18n="c06.speed">speed</span> <input id="replay-speed" type="range" min="1" max="30" value="8"> <span id="replay-fps" class="v mono">${t("c06.fps", { n: 8 })}</span></label>
     <input id="replay-scrub" type="range" min="0" max="${frames.length - 1}" value="0" style="flex:1;min-width:120px">
   `;
   const canvas = document.createElement("canvas");
@@ -134,9 +137,9 @@ export async function start(container) {
     // HUD: exactly which on-chain frame is on screen
     ctx.fillStyle = "#8fa3b8";
     ctx.font = "12px ui-monospace, Menlo, Consolas, monospace";
-    ctx.fillText(`tick ${f.t} · block ${f.b} · ${f.ts}`, 16, H - 8);
-    ctx.fillText(`${f.fired} neurons fired this step · ${f.spikes} spikes lifetime`, W / 2 + 40, H - 8);
-    ctx.fillText(`frame ${idx + 1}/${frames.length}`, W - 120, H - 8);
+    ctx.fillText(t("c06.hud_frame", { tick: f.t, block: f.b, ts: f.ts }), 16, H - 8);
+    ctx.fillText(t("c06.hud_fired", { n: f.fired, m: f.spikes }), W / 2 + 40, H - 8);
+    ctx.fillText(t("c06.hud_index", { i: idx + 1, n: frames.length }), W - 120, H - 8);
 
     const scrub = el("replay-scrub");
     if (scrub) scrub.value = String(idx);
@@ -154,28 +157,33 @@ export async function start(container) {
 
   // --- wiring ---------------------------------------------------------------
   const playBtn = el("replay-play");
+  const setPlayLabel = () => label(playBtn, playing ? "c06.btn_pause" : "c06.btn_play");
   playBtn.addEventListener("click", () => {
     playing = !playing;
-    playBtn.textContent = playing ? "⏸ PAUSE" : "▶ PLAY";
+    setPlayLabel();
     if (playing) raf = requestAnimationFrame(loop);
     else if (raf) cancelAnimationFrame(raf);
   });
   el("replay-step").addEventListener("click", () => {
-    playing = false; playBtn.textContent = "▶ PLAY";
+    playing = false; setPlayLabel();
     idx = Math.min(idx + 1, frames.length - 1);
     draw();
   });
   const speed = el("replay-speed");
   speed.addEventListener("input", () => {
     fps = Number(speed.value);
-    el("replay-fps").textContent = fps + "/s";
+    label(el("replay-fps"), "c06.fps", { n: fps });
   });
   el("replay-scrub").addEventListener("input", (e) => {
     idx = Number(e.target.value);
     draw();
   });
 
-  setNote(`recording: ${frames.length} heartbeats (tick ${frames[0].t} → ${frames.at(-1).t}), every frame a replayed on-chain read — generated ${data.meta.generated.slice(0, 10)}`);
+  const summary = { n: frames.length, from: frames[0].t, to: frames.at(-1).t, date: data.meta.generated.slice(0, 10) };
+  setNote("c06.summary", summary);
+  // the recording itself is language-free; only its captions are redrawn, from the
+  // frame already on screen, with no second fetch of the asset
+  onLangChange(() => { setNote("c06.summary", summary); draw(); });
   draw();
   return { stop() { playing = false; if (raf) cancelAnimationFrame(raf); } };
 }

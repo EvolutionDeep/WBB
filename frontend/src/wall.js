@@ -23,6 +23,7 @@
  *     reported as refusal, never rendered as "nobody has engraved anything".
  */
 import { Interface } from "ethers";
+import { t, label, take, onLangChange, localeTag } from "./i18n.js";
 
 /// the ledger, and the block it was deployed in: the left edge of any honest scan
 export const LEDGER = "0x16a4d26C90fE7613f22Da41150E4847e1fE47495";
@@ -141,11 +142,20 @@ const cache = {
   write(v) { try { localStorage.setItem(CACHE_KEY, JSON.stringify(v)); } catch { /* private mode: the scan simply restarts */ } },
 };
 
-function status(text, cls) {
+function status(key, params, cls) {
   const s = el("wall-status");
   if (!s) return;
-  s.textContent = text;
+  lastStatus = { key, params: params || null, cls: cls || "" };
+  label(take(s), key, params);
   s.className = "v " + (cls || "");
+}
+
+let lastStatus = null;
+
+/// the wall re-reads on a language switch rather than translating a half-truth: every
+/// number on this card comes from the chain, and the wording around it is the point
+function repaintStatus() {
+  if (lastStatus) status(lastStatus.key, lastStatus.params, lastStatus.cls);
 }
 
 /// the last complete read, kept so that an armed engraver can prefill its form from
@@ -198,17 +208,17 @@ async function scanEvents(head) {
 async function facts() {
   const names = ["currentSlot", "price", "ticksPerSlot", "taken", "MAX_TEXT_LEN", "brain", "token"];
   const res = await batch(LEDGER, names.map((m) => wall.encodeFunctionData(m)));
-  if (res.some((r) => !r)) throw new Error("ledger getters unreadable on every endpoint");
+  if (res.some((r) => !r)) throw new Error(t("c05.err_getters"));
   const d = names.map((m, i) => wall.decodeFunctionResult(m, res[i])[0]);
   const [currentSlot, price, ticksPerSlot, taken, maxLen, brainAddr, tokenAddr] = d;
   if (String(tokenAddr).toLowerCase() !== TOKEN.toLowerCase()) {
-    throw new Error(`ledger is paid in ${shortAddr(tokenAddr, 10)}, not the token this page pins -- refusing to quote a price`);
+    throw new Error(t("c05.err_token", { a: shortAddr(tokenAddr, 10) }));
   }
   const meta = await batch(TOKEN, ["symbol", "decimals"].map((m) => erc20.encodeFunctionData(m)));
   const symbol = meta[0] ? String(erc20.decodeFunctionResult("symbol", meta[0])[0]) : "TOKEN";
   const decimals = meta[1] ? Number(erc20.decodeFunctionResult("decimals", meta[1])[0]) : 18;
-  const t = await batch(brainAddr, [brainAbi.encodeFunctionData("tick")]);
-  const tick = t[0] ? String(brainAbi.decodeFunctionResult("tick", t[0])[0]) : "—";
+  const tickRaw = await batch(brainAddr, [brainAbi.encodeFunctionData("tick")]);
+  const tick = tickRaw[0] ? String(brainAbi.decodeFunctionResult("tick", tickRaw[0])[0]) : "—";
   return { currentSlot: Number(currentSlot), price, ticksPerSlot: Number(ticksPerSlot), taken: Number(taken), maxLen: Number(maxLen), brainAddr, tick, symbol, decimals, minNominal: minNominal(price) };
 }
 
@@ -231,16 +241,17 @@ async function renderTiles(f, rows) {
   grid.innerHTML = slots.map((s, i) => {
     const key = String(s);
     const e = decoded.get(key) || bySlot.get(key);
+    const slotLabel = t("c05.slot", { n: s });
     if (e) {
-      const burned = e.burned ? `${fmt(e.burned, f.decimals)} ${f.symbol} burned` : "";
-      return `<div class="tile taken" title="tick ${e.tickAt} · ${burned}">` +
-        `<span class="slot">slot ${s}</span><span class="txt">${esc(e.text)}</span>` +
+      const burned = e.burned ? t("c05.burned", { n: fmt(e.burned, f.decimals), sym: f.symbol }) : "";
+      return `<div class="tile taken" title="${esc(t("c05.tile_tip", { tick: e.tickAt, burned }))}">` +
+        `<span class="slot">${slotLabel}</span><span class="txt">${esc(e.text)}</span>` +
         `<span class="who">${shortAddr(e.author)}</span></div>`;
     }
     if (res[i] === null) {
-      return `<div class="tile unknown"><span class="slot">slot ${s}</span><span class="txt">unreadable here</span></div>`;
+      return `<div class="tile unknown"><span class="slot">${slotLabel}</span><span class="txt">${t("c05.tile_unknown")}</span></div>`;
     }
-    return `<div class="tile open"><span class="slot">slot ${s}</span><span class="txt">open — ${f.maxLen} characters, forever</span></div>`;
+    return `<div class="tile open"><span class="slot">${slotLabel}</span><span class="txt">${t("c05.tile_open", { max: f.maxLen })}</span></div>`;
   }).join("");
 }
 
@@ -249,37 +260,40 @@ function renderLog(f, rows) {
   if (!list) return;
   const recent = [...rows].sort((a, b) => Number(b.slot) - Number(a.slot)).slice(0, 20);
   if (!recent.length) {
-    list.innerHTML = '<div class="note">nothing engraved yet — every slot on the wall is still open.</div>';
+    list.innerHTML = `<div class="note">${t("c05.log_empty")}</div>`;
     return;
   }
   list.innerHTML = recent.map((r) =>
-    `<div class="ev-item"><div class="lbl">slot ${r.slot} · ${esc(r.text)}</div>` +
-    `<div class="hash">${shortAddr(r.author)} · ticks ${r.tickFrom}–${r.tickTo} · ${fmt(r.burned || 0, f.decimals)} ${esc(f.symbol)} burned · block ${r.block} · ` +
+    `<div class="ev-item"><div class="lbl">${t("c05.slot", { n: r.slot })} · ${esc(r.text)}</div>` +
+    `<div class="hash">${t("c05.log_line", {
+      author: shortAddr(r.author), from: r.tickFrom, to: r.tickTo,
+      burned: t("c05.burned", { n: fmt(r.burned || 0, f.decimals), sym: esc(f.symbol) }), block: r.block,
+    })} ` +
     `<a href="https://bscscan.com/tx/${r.tx}" target="_blank" rel="noopener">${shortAddr(r.tx, 8)}</a></div></div>`).join("");
 }
 
 async function refresh(showBusy) {
   try {
-    if (showBusy) status("reading the wall…", "");
+    if (showBusy) status("c05.reading", null, "");
     const head = Number(BigInt(await rpc("eth_blockNumber", [])));
     const f = await facts();
     lastFacts = f;
     const scan = await scanEvents(head);
-    setText("wall-price", `${fmt(f.price, f.decimals)} ${f.symbol} (must arrive)`);
-    setText("wall-min", `${fmt(f.minNominal, f.decimals)} ${f.symbol} — the bare contract floor, the form adds a 2% margin`);
-    setText("wall-ticks", `${f.ticksPerSlot} ticks of beating (about ${f.ticksPerSlot} minutes at the observed ~1 tick/min cadence)`);
-    setText("wall-cur-slot", `${f.currentSlot} (brain tick ${f.tick})`);
-    setText("wall-taken", `${f.taken} engraved`);
-    const edge = scan.scannedTo >= head ? `all history, through block ${head}` : `through block ${scan.scannedTo} of ${head} — the scan is incremental`;
-    setText("wall-scan", scan.refused ? `${edge}; ${scan.refused} span(s) refused by the endpoint, not empty` : edge);
+    setText("wall-price", t("c05.price", { n: fmt(f.price, f.decimals), sym: f.symbol }));
+    setText("wall-min", t("c05.floor", { n: fmt(f.minNominal, f.decimals), sym: f.symbol }));
+    setText("wall-ticks", t("c05.span", { ticks: f.ticksPerSlot }));
+    setText("wall-cur-slot", t("c05.cur_slot", { slot: f.currentSlot, tick: f.tick }));
+    setText("wall-taken", t("c05.taken", { n: f.taken }));
+    const edge = scan.scannedTo >= head ? t("c05.edge_all", { head }) : t("c05.edge_part", { to: scan.scannedTo, head });
+    setText("wall-scan", scan.refused ? edge + t("c05.refused", { n: scan.refused }) : edge);
     await renderTiles(f, scan.rows);
     renderLog(f, scan.rows);
-    status("wall read · " + new Date().toLocaleTimeString(), "ok");
+    status("c05.read_at", { time: new Date().toLocaleTimeString(localeTag()) }, "ok");
     const b = el("wall-enable");
     if (b && !b.dataset.armed) b.disabled = false;
     return f;
   } catch (e) {
-    status("wall unreadable: " + ((e && e.shortMessage) || (e && e.message) || e), "err");
+    status("c05.unreadable", { m: (e && e.shortMessage) || (e && e.message) || e }, "err");
     return null;
   }
 }
@@ -291,7 +305,7 @@ export function init() {
   if (enable) {
     enable.addEventListener("click", async () => {
       enable.disabled = true;
-      enable.textContent = "LOADING…";
+      label(enable, "c00.btn_loading");
       try {
         const m = await import("./engrave.js");
         // the engraver is handed only the two pinned addresses, a snapshot of what
@@ -302,15 +316,16 @@ export function init() {
         const form = el("wall-form");
         if (form) form.classList.remove("hidden");
         enable.dataset.armed = "1";
-        enable.textContent = "ENGRAVING ARMED";
-        status("engraving armed — the form below is the only thing on this page that can spend, and it spends only from your wallet", "ok");
+        label(enable, "c05.btn_armed");
+        status("c05f.armed", null, "ok");
       } catch (e) {
-        enable.textContent = "ENABLE ENGRAVING";
+        label(enable, "c05.btn_enable");
         enable.disabled = false;
-        status("engraving module failed to load: " + ((e && e.message) || e), "err");
+        status("c05f.load_fail", { m: (e && e.message) || e }, "err");
       }
     }, { once: false });
   }
+  onLangChange(() => { repaintStatus(); refresh(false); });
   refresh(true);
   setInterval(() => refresh(false), REFRESH_MS);
 }

@@ -9,6 +9,9 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+// the copy catalogue is part of the shipped page, so the guards below can assert on
+// the wording itself instead of on wherever it happens to be spliced in
+import { MESSAGES, LANGS, DEFAULT_LANG, t } from "../src/i18n.js";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const main = readFileSync(join(root, "src", "main.js"), "utf8");
@@ -26,11 +29,16 @@ const allSrc = guardFiles.map((f) => readFileSync(join(root, "src", f), "utf8"))
 let fail = 0;
 const has = (cond, label) => { if (!cond) fail++; console.log(`${cond ? "OK  " : "FAIL"}  ${label}`); };
 const absent = (src, needle, label) => has(!src.toLowerCase().includes(needle.toLowerCase()), label);
+const han = /\p{Script=Han}/u;
+const cjk = /[\u3000-\u303f\u3400-\u4dbf\u4e00-\u9fff\ufe30-\ufe4f\uff00-\uffef]/;
+const params = (s) => [...String(s).matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort().join(",");
 
 has(main.includes("0x192004dAe2A55E20CE21A7d05E722B32c9A9b61E"), "READOUT address frozen in source");
 has(main.includes("0xbe0C5117f740a9333614D806Bd50C3907186C6fD"), "ADAPTER address frozen in source");
 has(main.includes("1048576n"), "Q20 SCALE constant present");
-has(main.includes("HALTED"), "staleness rule surfaced (HALTED)");
+// the verdict word moved into the dictionary with the rest of the copy, so the guard
+// is that the module asks for that key and that the key still means HALTED
+has(main.includes('"c01.verdict_halted"') && MESSAGES["c01.verdict_halted"].en === "HALTED", "staleness rule surfaced (HALTED)");
 has(/read-?only/i.test(main), "page advertises read-only");
 
 // --- liveness verdict guards (regression fence for the false-HALTED bug) ---
@@ -81,11 +89,13 @@ absent(wallSrc, OLD_LEDGER_ADDR, "wall no longer reads the superseded 1-token le
 // the previous wall's cached scan floor and skip its earliest inscriptions
 has(/CACHE_KEY = `wbb_wall_\$\{LEDGER\.toLowerCase\(\)\}`/.test(wallSrc),
   "the wall's cache key is derived from the ledger address, not a hand-bumped counter");
-has(wallSrc.includes('not the token this page pins'), "wall refuses to quote a price if the ledger's token differs");
+has(wallSrc.includes('"c05.err_token"') && MESSAGES["c05.err_token"].en.includes("not the token this page pins"),
+  "wall refuses to quote a price if the ledger's token differs");
 // a permanent on-chain string is untrusted input: it must be escaped, never spliced
 has(/const esc = /.test(wallSrc) && wallSrc.includes("esc(e.text)"), "engraved text is HTML-escaped before rendering");
 // an endpoint that refuses a range must not be able to impersonate an empty wall
-has(wallSrc.includes("refused") && wallSrc.includes("not empty"), "a refused getLogs span is reported as refusal");
+has(wallSrc.includes('"c05.refused"') && /refused[\s\S]*not empty/.test(MESSAGES["c05.refused"].en),
+  "a refused getLogs span is reported as refusal");
 has(wallSrc.includes("unreadable"), "an unreadable read renders as unreadable, not as open");
 has(main.includes('import("./wall.js")'), "wall loads lazily via dynamic import in main.js");
 
@@ -99,7 +109,10 @@ has(engrave.includes(TAX_ADDR), "engrave pins the token it approves");
 absent(engrave, OLD_LEDGER_ADDR, "engrave no longer targets the superseded 1-token ledger");
 // the spending module refuses to mount unless the reading module's pins agree with
 // its own, so a one-sided address change cannot produce a form at all
-has(engrave.includes("a ledger it does not pin") && engrave.includes("a token it does not pin"),
+has(
+  engrave.includes('t("c05f.pin_ledger")') && engrave.includes('t("c05f.pin_token")') &&
+    MESSAGES["c05f.pin_ledger"].en.includes("a ledger it does not pin") &&
+    MESSAGES["c05f.pin_token"].en.includes("a token it does not pin"),
   "engrave cross-checks the wall's addresses against its own pins");
 const engraveAddrs = [...engrave.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase());
 const ENGRAVE_OK = new Set([LEDGER_ADDR.toLowerCase(), TAX_ADDR.toLowerCase()]);
@@ -142,6 +155,17 @@ has(badge.includes("0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3"), "badge points 
 has(badge.includes("0x3eaf5d9f"), "badge pins the tick() selector");
 for (const bad of ["sendTransaction", "getSigner", "window.ethereum", "privatekey", "mnemonic", "advance(", "stimulate(", "inject("]) {
   absent(badge, bad, `badge.html stays read-only: ${bad}`);
+}
+// the badge is embedded on other people's sites and imports nothing, so it carries
+// its own two languages: assert that it holds both for every one of its strings and
+// that English stays the default when nobody asks for Chinese
+{
+  const bEn = [...badge.matchAll(/en: "([^"]*)"/g)].map((m) => m[1]);
+  const bZh = [...badge.matchAll(/zh: "([^"]*)"/g)].map((m) => m[1]);
+  has(bEn.length > 0 && bEn.length === bZh.length && bZh.every((s) => han.test(s)) &&
+      bEn.every((s, i) => params(s) === params(bZh[i])),
+    `badge.html ships its own two languages with matching parameters (${bEn.length} strings)`);
+  has(badge.includes('want === "zh" ? "zh" : "en"'), "badge.html is English unless ?lang=zh or the stored choice says Chinese");
 }
 
 // --- time-lapse: the player is a static-asset recording (src/replay.js is
@@ -203,7 +227,13 @@ has(
   viz.includes('fetch("data/graph.json")') && viz.includes('fetch("data/layout.json")'),
   "3D demo loads only its two local anatomy files",
 );
-has(viz.includes("DEMO") && viz.includes("synthetic"), "3D HUD states the motion is a synthetic demo");
+// the HUD text is looked up per frame, so the assertion has to reach the dictionary:
+// a comment that still says DEMO is not the page telling the visitor so
+has(
+  viz.includes('t("c00.hud_demo")') && viz.includes('t("c00.hud_synthetic")') &&
+    MESSAGES["c00.hud_demo"].en.includes("DEMO") && MESSAGES["c00.hud_synthetic"].en.includes("synthetic"),
+  "3D HUD states the motion is a synthetic demo",
+);
 has(
   viz.includes("function rimMaterial") && viz.includes("membranes"),
   "3D demo shades the cells with a fresnel membrane rim",
@@ -247,7 +277,8 @@ for (const [name, src] of [...READERS, ["worm3d.js", viz]]) {
   has(!/alchemy|infura|ankr|quicknode|pocket\.tech/i.test(src), `${name} holds no gateway credential of its own`);
 }
 has(
-  main.includes("seedLabel(RPC_SEEDS[i])") && main.includes("worker -> BSC"),
+  main.includes("seedLabel(RPC_SEEDS[") && main.includes('"c01.rpc_label"') &&
+    MESSAGES["c01.rpc_label"].en.includes("worker -> BSC"),
   "the footer says the proxy carries the read, it does not present itself as the source",
 );
 // queryFilter accepts an event NAME (or a topic hash), not an EventFragment object:
@@ -303,7 +334,64 @@ for (const [what, call] of SLOW_ONLY) {
 // both witnesses survive the split, and the fresher one still decides
 has(main.includes("[slow.eventAge, localAge]"), "the tick witness and the log witness are both kept, the fresher decides");
 has((main.match(/setText\("state-hash"/g) || []).length === 1, "one beat owns the state hash, so the two cadences cannot disagree on screen");
-has(main.includes("advance log re-scanned every"), "the page tells the visitor both intervals instead of silently reading less");
+has(main.includes('"c01.note_cadence"') && MESSAGES["c01.note_cadence"].en.includes("advance log re-scanned every"),
+  "the page tells the visitor both intervals instead of silently reading less");
+// --- languages: the page boots in English and switches to Chinese. The dictionary is
+// the only place a visitor's Chinese may live, so these guards are about completeness
+// (one key, both languages, the same parameters), about the Chinese actually being
+// Chinese rather than English copied twice, and about every call site naming a key that
+// exists -- an unresolved key would print its own name on the page.
+has(DEFAULT_LANG === "en" && LANGS.join("/") === "en/zh", "the page boots in English and offers exactly two languages");
+{
+  const keys = Object.keys(MESSAGES);
+  const noEn = keys.filter((k) => !MESSAGES[k].en);
+  const noZh = keys.filter((k) => !MESSAGES[k].zh);
+  has(!noEn.length && !noZh.length, `every key carries both languages (missing en: ${noEn.join(",") || "none"}, missing zh: ${noZh.join(",") || "none"})`);
+  // two entries allowed to hold no Han: the button names the language it is OFFERING,
+  // so in English mode its own text is the Chinese for "switch to Chinese", and the
+  // engraver's live preview is a character counter whose only difference between the
+  // two languages is the shape of the quotation marks around the drafted text
+  const noHan = keys.filter((k) => !han.test(MESSAGES[k].zh) && k !== "head.lang_btn" && k !== "c05f.preview");
+  has(!noHan.length, `every Chinese entry is really Chinese (${noHan.join(",") || "none"})`);
+  has(han.test(MESSAGES["head.lang_btn"].en) && !han.test(MESSAGES["head.lang_btn"].zh),
+    "the language button names the language it offers, not the one already on screen");
+  const sameTwice = keys.filter((k) => MESSAGES[k].zh === MESSAGES[k].en && k !== "c05f.preview");
+  has(!sameTwice.length, `no key is quietly left untranslated (${sameTwice.join(",") || "none"})`);
+  const offParams = keys.filter((k) => params(MESSAGES[k].en) !== params(MESSAGES[k].zh));
+  has(!offParams.length, `both languages take the same parameters (${offParams.join(",") || "none"})`);
+  // a key typed at a call site the dictionary does not carry would show itself on the
+  // page, so every literal in the shipped modules and the shipped HTML has to resolve.
+  // The evidence rows compose theirs ("c07.1" + ".lbl"), so a stem of real keys counts.
+  const keyLit = /["'`]((?:head|foot|c\d{2}[a-z]*)\.[A-Za-z0-9_]+)["'`]/g;
+  const attrLit = /data-i18n(?:-html|-placeholder|-title)?="([^"]+)"/g;
+  const unresolved = [];
+  for (const [name, src] of [...srcFiles.map((f) => [`src/${f}`, readFileSync(join(root, "src", f), "utf8")]), ["index.html", replayHtml]]) {
+    for (const m of src.matchAll(keyLit)) {
+      if (!MESSAGES[m[1]] && !keys.some((k) => k.startsWith(m[1] + "."))) unresolved.push(`${m[1]} in ${name}`);
+    }
+    for (const m of src.matchAll(attrLit)) {
+      if (!MESSAGES[m[1]]) unresolved.push(`${m[1]} in ${name} (attribute)`);
+    }
+  }
+  has(!unresolved.length, `every key the modules and the page name exists (${[...new Set(unresolved)].slice(0, 6).join(", ") || "none"} unresolved)`);
+  has(keys.length > 200, `the catalogue covers the whole page (${keys.length} keys)`);
+}
+has(t("c01.no.such.key") === "c01.no.such.key", "an unknown key prints itself: a missing translation is visible, not thrown");
+{
+  // Chinese is UI copy, not source commentary: comments, the README and every document
+  // stay English, so CJK is confined to the two dictionaries and the one button in the
+  // HTML that offers the other language.
+  const leaky = [];
+  for (const f of srcFiles.filter((n) => n !== "i18n.js")) {
+    const hits = readFileSync(join(root, "src", f), "utf8").split(/\r?\n/).filter((l) => cjk.test(l));
+    if (hits.length) leaky.push(`src/${f} (${hits.length} line(s))`);
+  }
+  if (replayHtml.split(/\r?\n/).some((l) => cjk.test(l) && !l.includes("lang-toggle"))) leaky.push("index.html outside the language button");
+  if (cjk.test(readFileSync(join(root, "..", "README.md"), "utf8"))) leaky.push("README.md");
+  has(!leaky.length, `Chinese lives only in the dictionaries (${leaky.join(", ") || "every module, the HTML prose and the README are CJK-free"})`);
+}
+has(replayHtml.includes('id="lang-toggle"'), "the language switch is on the page itself, not only in a URL parameter");
+
 console.log(`scanned ${srcFiles.length} src modules (read-only guard on ${guardFiles.length}, dedicated fences on ${WRITE_MODULES.join(" and ")}): ${srcFiles.join(", ")}`);
 console.log(fail ? `\n${fail} FAILURE(S)` : "\nFRONTEND READ-ONLY SMOKE PASSED");
 process.exitCode = fail ? 1 : 0;

@@ -1,4 +1,5 @@
 import { ethers } from "ethers";
+import { t, label, take, onLangChange, localeTag, initI18n } from "./i18n.js";
 
 /**
  * READ-ONLY dashboard for the on-chain worm.
@@ -22,7 +23,9 @@ import { ethers } from "ethers";
  * click, each pins one contract and one function, and neither can be reached from
  * the default page.
  *
- * Comment policy: English only (project rule).
+ * Comment policy: English only (project rule). Prose is: every sentence the page shows
+ * lives in src/i18n.js as one {en, zh} pair, so this file owns the reading and the
+ * verdict while the dictionary owns the wording and nothing else.
  */
 
 // ---- frozen deployment coordinates (see contracts/deployed_addresses.json) ----
@@ -82,30 +85,28 @@ const BRAIN_ABI = [
 ];
 const PAIR_ABI = ["function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)"];
 
-// ---- static evidence, mirrors README.md (history, not live polling) ----
+// ---- static evidence, mirrors README.md (history, not live polling). Only the wording
+// moved into the dictionary; the hashes below are the record itself and are never localised.
 const EVIDENCE = [
   {
-    lbl: "1 · non-deployer inject (no advance in-tx)",
-    desc: "A funded throwaway (not the deployer) called SenseAdapter.inject(200000); brain tick stayed 6 → 6 in that transaction.",
+    key: "c07.1",
     txs: ["0xe41ea3b5af30f816e7221c3301c4b5e046bbfbf4298f938db0d7492a975ebb8c"],
-    note: "funding tx 0x0f8b1da2a47ea8cb2910a1b34accd6f7348b2602f3f4affd5d8f939bea1c5aa1",
+    hasNote: true,
   },
   {
-    lbl: "2 · same-block currents accumulate, never overwrite",
-    desc: "(a) stimulate(ASEL,+300000) then stimulate(ASEL,-120000) in one block → stim 200000→380000. (b) inject(250000) then inject(150000) in one block → stim 380000→780000.",
+    key: "c07.2",
     txs: [
       "0x351c1dfab71eca9ca8561674e79bd3e2e177bc4d45b9fabcf4da61e850b39e19",
       "0xfe601929a04a8269502034a0fab86870947914dfe1558c48c4caf35c13f1ad1f",
       "0x341adf0fa71b5aaffe2bdcc9f9dc82b20f37f25e15368ed5933c569c9e1a7795",
       "0xe444dbb48acf5edd955203a65e36c09a81cdeab4c6da05bdc3d69177885c7216",
     ],
-    note: "blocks 125298241 / 125298253",
+    hasNote: true,
   },
   {
-    lbl: "3 · readout.stateHash == brain.stateHash (read-only)",
-    desc: "At block 125298262 both sides read the same stateHash — WormReadout forwards brain.stateHash() directly.",
+    key: "c07.3",
     txs: [],
-    note: "During the wait window tick stayed 6 and NO advance was observed. This is a read-only stateHash equality, NOT a verified live beat.",
+    hasNote: true,
   },
 ];
 
@@ -121,7 +122,13 @@ const setText = (id, v) => { const n = el(id); if (n) n.textContent = v; };
 let activeIdx = -1;
 // the footer says what the browser actually talked to: the worker is a proxy that reads
 // the chain for the page, not a database of its own
-const seedLabel = (url) => (url === WORKER_RPC ? "api.bscworm.com (worker -> BSC)" : new URL(url).host);
+const seedLabel = (url) => (url === WORKER_RPC ? t("c01.rpc_label", { host: "api.bscworm.com" }) : new URL(url).host);
+// the host the browser actually reached, painted from the dictionary so a language
+// switch can redo it without a new read
+function paintRpcHost() {
+  const n = el("rpc-host");
+  if (n && activeIdx >= 0) n.textContent = seedLabel(RPC_SEEDS[activeIdx]);
+}
 function makeProvider(i) {
   const p = new ethers.JsonRpcProvider(RPC_SEEDS[i], 56n, { staticNetwork: true });
   return p;
@@ -140,7 +147,7 @@ async function withRotation(fn) {
     try {
       const p = makeProvider(i);
       const out = await fn(p);
-      if (activeIdx !== i) { activeIdx = i; el("rpc-host").textContent = seedLabel(RPC_SEEDS[i]); }
+      if (activeIdx !== i) { activeIdx = i; paintRpcHost(); }
       return out;
     } catch (e) { lastErr = e; }
   }
@@ -196,7 +203,7 @@ function drawBody(hist, cur) {
   ctx.strokeStyle = "rgba(53,224,255,0.15)"; ctx.lineWidth = 1;
   ctx.beginPath(); ctx.moveTo(cx, 0); ctx.lineTo(cx, H); ctx.moveTo(0, cy); ctx.lineTo(W, cy); ctx.stroke();
   ctx.fillStyle = "rgba(148,205,226,0.35)"; ctx.font = "10px monospace";
-  ctx.fillText("turn →", W - 46, cy - 5); ctx.fillText("approach ↑", cx + 4, 12);
+  ctx.fillText(t("c02.axis_turn"), W - 46, cy - 5); ctx.fillText(t("c02.axis_approach"), cx + 4, 12);
   const map = (p) => [cx + (p.turn / 10000) * (W / 2 - 12), cy - (p.approach / 10000) * (H / 2 - 12)];
   // faint connector ONLY between consecutive real ticks (never fabricated points)
   ctx.strokeStyle = "rgba(53,224,255,0.18)"; ctx.beginPath();
@@ -210,7 +217,7 @@ function drawBody(hist, cur) {
   if (cur) {
     const [x, y] = map(cur); const r = 4 + (Math.abs(cur.speed) / 10000) * 8;
     ctx.fillStyle = "#ff4fd8"; ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill();
-    ctx.fillStyle = "#dff5ff"; ctx.fillText(`tick ${cur.tick}`, Math.min(x + 8, W - 60), Math.max(y - 8, 10));
+    ctx.fillStyle = "#dff5ff"; ctx.fillText(t("c02.tick_label", { n: cur.tick }), Math.min(x + 8, W - 60), Math.max(y - 8, 10));
   }
 }
 
@@ -246,26 +253,26 @@ async function buildStimList(p, head, brainAddr, adapterAddr, stimNow) {
   merged.sort((a, b) => b.block - a.block);
   const top = merged.slice(0, 24);
   const box = el("stim-list");
-  if (!top.length) { box.innerHTML = `<div class="note">no inject / stimulate events in the last ~1500 blocks</div>`; return; }
+  if (!top.length) { box.innerHTML = `<div class="note">${t("c03.feed_empty")}</div>`; return; }
   box.innerHTML = top.map((e, i) => `
     <div class="ev ${e.cls}">
       <span class="ty">${e.type}</span>
       ${neuronTag(e.idx)}
-      <span class="cell">amp <b>${e.amp.toString()}</b></span>
-      <span class="cell">blk <b>${e.block}</b></span>
-      ${e.from ? `<span class="cell">from <b>${short(e.from)}</b></span>` : ""}
-      <span class="cell acc" data-i="${i}">accum <b>…</b></span>
+      <span class="cell">${t("c03.amp")} <b>${e.amp.toString()}</b></span>
+      <span class="cell">${t("c03.blk")} <b>${e.block}</b></span>
+      ${e.from ? `<span class="cell">${t("c03.from")} <b>${short(e.from)}</b></span>` : ""}
+      <span class="cell acc" data-i="${i}">${t("c03.accum")} <b>…</b></span>
     </div>`).join("");
   // best-effort "accumulated after that block" via historical state (needs archive; guarded)
   const idxSet = new Set([39, 40, 76, 77]);
   const cells = box.querySelectorAll(".acc");
   for (let i = 0; i < Math.min(top.length, 8); i++) {
     const e = top[i];
-    if (!idxSet.has(Number(e.idx))) { cells[i].innerHTML = `accum <b>n/a</b>`; continue; }
+    if (!idxSet.has(Number(e.idx))) { cells[i].innerHTML = `${t("c03.accum")} <b>${t("c03.na")}</b>`; continue; }
     try {
       const v = await brain.stim(e.idx, { blockTag: e.block });
-      cells[i].innerHTML = `accum <b>${v.toString()}</b>`;
-    } catch { cells[i].innerHTML = `accum <b>—</b>`; }
+      cells[i].innerHTML = `${t("c03.accum")} <b>${v.toString()}</b>`;
+    } catch { cells[i].innerHTML = `${t("c03.accum")} <b>—</b>`; }
   }
 }
 
@@ -305,7 +312,9 @@ function staleSeconds(c) {
   return Math.max(MIN_STALE_SEC, Math.round((CADENCE_MULT * (c.gap || 0)) / 1000));
 }
 
-const fmtAge = (s) => (s === null ? "—" : s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)}min` : `${(s / 3600).toFixed(1)}h`);
+// seconds-to-string in the active language: "3min" is English morphology, so the unit
+// itself is a message and not something this file may spell out
+const fmtAge = (s) => (s === null ? "—" : s < 90 ? t("c01.age_s", { n: s }) : s < 5400 ? t("c01.age_min", { n: Math.round(s / 60) }) : t("c01.age_h", { n: (s / 3600).toFixed(1) }));
 
 // ---- the read, split into two cadences ----
 // One measured run of the deployed page: a single open tab issued roughly 37 proxy reads
@@ -330,8 +339,85 @@ let BRAIN_ADDR = null; // resolved by the slow beat from readout.brain()
 // rendering an honest verdict rather than blanking the liveness badges out
 const slow = { staleWindow: null, advBlock: null, advErrored: 0, advSpans: 0, eventAge: null, scannedAt: 0 };
 
+// the last reading this page took, and whether the most recent one landed. Rendering is
+// split out of the read so a language switch can put every sentence back into the new
+// tongue immediately, from data already in hand, without asking the chain again.
+let lastView = null;
+let readFailed = false;
+
+function renderStatusLine() {
+  const node = el("status-text");
+  if (!node) return;
+  if (readFailed) { node.textContent = t("c01.status_failed"); return; }
+  const v = lastView;
+  if (!v) return;
+  node.textContent = t("c01.status_reading", {
+    head: v.head.toLocaleString(localeTag()),
+    verdict: t(v.halted ? "c01.verdict_halted" : "c01.verdict_live"),
+  });
+}
+
+// Pure paint: no read, no await. Everything here comes from lastView.
+function renderReadout() {
+  const v = lastView;
+  paintRpcHost();
+  if (!v) return;
+  const num = (n) => n.toLocaleString(localeTag());
+  setText("tick", v.tick + (v.tickB === v.tick ? "" : t("c01.tick_raw", { n: v.tickB })));
+  setText("state-hash", v.stateHash);
+  setText("cur-block", num(v.head));
+  setText("last-adv-block", v.advBlock === null
+    ? (v.advErrored ? t("c01.adv_unreadable", { e: v.advErrored, s: v.advSpans }) : t("c01.adv_none"))
+    : num(v.advBlock));
+  setText("since-adv", v.sinceAdv === null ? "—" : num(v.sinceAdv));
+  setText("adv-age", !v.observable ? t("c01.age_none") : t("c01.age_line", {
+    age: fmtAge(v.ageSec),
+    event: v.eventAge === null ? t("c01.age_na") : fmtAge(v.eventAge),
+    scan: v.scanLag !== null && v.eventAge !== null ? t("c01.age_scan", { x: fmtAge(v.scanLag) }) : "",
+    observed: v.localAge === null ? t("c01.age_na") : fmtAge(v.localAge),
+  }));
+  setText("stale-window", v.cadSec
+    ? t("c01.window_beat", { sec: v.windowSec, mult: CADENCE_MULT, beat: v.cadSec })
+    : t("c01.window_floor", { sec: v.windowSec }));
+
+  const badge = el("status-badge");
+  if (badge) {
+    badge.innerHTML = !v.observable
+      ? `<span class="badge watch">${t("c01.badge_checking")}</span>`
+      : v.halted
+        ? `<span class="badge halt">${t("c01.badge_halted", { age: fmtAge(v.ageSec) })}</span>`
+        : `<span class="badge live">${t("c01.badge_live", { age: fmtAge(v.ageSec) })}</span>`;
+  }
+
+  // the block arithmetic is a reading, not a phrase: it is computed here and handed to
+  // the dictionary as a parameter, so the sentence around it can be reordered freely
+  const blockMath = v.sinceAdv === null || v.secPerBlock === null
+    ? ""
+    : t("c01.note_blockmath", {
+      since: v.sinceAdv,
+      sw: v.SW,
+      sec: Math.round(v.SW * v.secPerBlock),
+      spb: v.secPerBlock.toFixed(2),
+    });
+  setText("stale-note",
+    (!v.observable
+      ? t("c01.note_neutral")
+      : v.halted
+        ? t("c01.note_halted", { age: fmtAge(v.ageSec), window: v.windowSec })
+        : t("c01.note_live", { window: v.windowSec, mult: CADENCE_MULT, beat: v.cadSec ?? "?" }) + blockMath)
+    + t("c01.note_cadence", { fast: FAST_MS / 1000, slow: SLOW_MS / 1000 }));
+
+  if (v.cur) {
+    drawBody(hist, v.cur);
+    gauge("f-approach", "g-approach", v.cur.approach);
+    gauge("f-turn", "g-turn", v.cur.turn);
+    gauge("f-speed", "g-speed", v.cur.speed);
+  }
+  renderStatusLine();
+}
+
 async function poll(scanLogs) {
-  const dot = el("dot"); const statusText = el("status-text");
+  const dot = el("dot");
   try {
     await withRotation(async (p) => {
       const head = await p.getBlockNumber();
@@ -398,42 +484,21 @@ async function poll(scanLogs) {
       // comparison below is honest about why a block count cannot be the verdict
       const secPerBlock = sinceAdv > 0 && ageSec !== null ? ageSec / sinceAdv : null;
 
-      setText("tick", r.tick.toString() + (tickB.toString() === r.tick.toString() ? "" : ` (raw ${tickB})`));
-      setText("state-hash", r.stateHash);
-      setText("cur-block", head.toLocaleString());
-      setText("last-adv-block", slow.advBlock === null
-        ? (slow.advErrored ? `not readable here (${slow.advErrored}/${slow.advSpans} log spans rejected)` : "none in the last 6000 blocks")
-        : slow.advBlock.toLocaleString());
-      setText("since-adv", sinceAdv === null ? "—" : sinceAdv.toLocaleString());
-      setText("adv-age", observable
-        ? `${fmtAge(ageSec)} ago (event ${slow.eventAge === null ? "n/a" : fmtAge(slow.eventAge)}${scanLag !== null && slow.eventAge !== null ? `, scanned ${fmtAge(scanLag)} ago` : ""} / observed ${localAge === null ? "n/a" : fmtAge(localAge)})`
-        : "no witness yet");
       const cadSec = cadence.gap ? Math.round(cadence.gap / 1000) : null;
-      setText("stale-window", `${windowSec}s${cadSec ? ` = ${CADENCE_MULT} x learned ~${cadSec}s beat` : ` = floor, no beat learned yet`}`);
-
-      const badge = el("status-badge");
-      badge.innerHTML = !observable
-        ? `<span class="badge watch">CHECKING — advance not observable yet</span>`
-        : halted
-          ? `<span class="badge halt">HALTED — no advance for ${fmtAge(ageSec)}</span>`
-          : `<span class="badge live">LIVE — advanced ${fmtAge(ageSec)} ago</span>`;
-      const blockMath = sinceAdv === null || secPerBlock === null
-        ? ""
-        : ` Block math, shown for reference only: ${sinceAdv} blocks since the last advance, and the contract's STALE_WINDOW of ${SW} blocks is worth about ${Math.round(SW * secPerBlock)}s at the ~${secPerBlock.toFixed(2)}s per block measured here - far shorter than this worm's heartbeat, which is why a block count cannot decide the verdict.`;
-      el("stale-note").textContent = !observable
-        ? `Neither the advance log nor a changed tick is readable from this endpoint yet, so the page refuses to call the animal dead on a missing reading. It will re-judge on the next poll.`
-        : halted
-          ? `Honest stall: nothing has advanced the brain for ${fmtAge(ageSec)}, past the ${windowSec}s window. Only advance() moves the clock and it costs gas - the keeper may have stopped, while injecting through the adapter below still works for anyone.`
-          : `Liveness is judged on elapsed time: stalled after ${windowSec}s of silence, which is ${CADENCE_MULT}x the ~${cadSec ?? "?"}s beat this page measured from real tick changes.${blockMath}`;
-      el("stale-note").textContent += ` The tick and the body are read every ${FAST_MS / 1000}s, the advance log re-scanned every ${SLOW_MS / 1000}s, so the fresher witness is the one on screen and the log one is at most that late.`;
-
-      // body
+      // body: a point is recorded only for a tick this page actually saw change
       const cur = { tick: Number(r.tick), approach: Number(r.approach), turn: Number(r.turn), speed: Number(r.speed) };
       if (!hist.length || hist[hist.length - 1].tick !== cur.tick) { hist.push(cur); hist = hist.slice(-300); saveHist(hist); }
-      drawBody(hist, cur);
-      gauge("f-approach", "g-approach", cur.approach);
-      gauge("f-turn", "g-turn", cur.turn);
-      gauge("f-speed", "g-speed", cur.speed);
+
+      // every word below is painted from this snapshot, by a render path that owns no
+      // English of its own and that a language switch can run again on demand
+      lastView = {
+        tick: r.tick.toString(), tickB: tickB.toString(), stateHash: r.stateHash, head,
+        advBlock: slow.advBlock, advErrored: slow.advErrored, advSpans: slow.advSpans,
+        sinceAdv, SW, windowSec, cadSec, ageSec, eventAge: slow.eventAge, localAge,
+        scanLag, secPerBlock, observable, halted, cur,
+      };
+      readFailed = false;
+      renderReadout();
 
       // the slow set: accumulations, the sampled pool ratio and the event feeds. None of
       // them can be wrong because they were answered once a minute.
@@ -451,24 +516,24 @@ async function poll(scanLogs) {
           const pair = asContract(p, pairAddr, PAIR_ABI);
           const [r0, r1] = await pair.getReserves();
           const ratioNow = (BigInt(r1.toString()) * SCALE) / BigInt(r0.toString());
-          setText("ratio-now", ratioNow.toString() + (primed ? "" : "  (adapter not primed yet)"));
+          setText("ratio-now", ratioNow.toString() + (primed ? "" : t("c03.not_primed")));
           setText("ratio-last", ratioLast.toString());
           const delta = ratioNow - BigInt(ratioLast.toString());
           setText("ratio-delta", (delta >= 0n ? "+" : "") + delta.toString());
         } catch {
-          setText("ratio-now", "— (pair read failed)");
+          setText("ratio-now", t("c03.pair_failed"));
         }
 
         await buildStimList(p, head, BRAIN_ADDR, adapterAddr, { asel, aser });
       }
 
       dot.className = "ok";
-      statusText.textContent = `reading · head ${head.toLocaleString()} · ${halted ? "HALTED" : "LIVE"}`;
+      renderStatusLine();
     });
   } catch (e) {
     // a failed slow beat must not steal the status line from the fast one: the fast beat
     // still runs on its own interval and repaints the verdict every ten seconds
-    if (!scanLogs) { dot.className = "bad"; statusText.textContent = "RPC read failed — retrying"; }
+    if (!scanLogs) { dot.className = "bad"; readFailed = true; renderStatusLine(); }
     console.error(scanLogs ? "[slow read]" : "[read-only poll]", e && e.message ? e.message : e);
   }
 }
@@ -476,10 +541,10 @@ async function poll(scanLogs) {
 function renderEvidence() {
   el("evidence").innerHTML = EVIDENCE.map((ev) => `
     <div class="ev-item">
-      <div class="lbl">${ev.lbl}</div>
-      <div class="desc">${ev.desc}</div>
+      <div class="lbl">${t(`${ev.key}.lbl`)}</div>
+      <div class="desc">${t(`${ev.key}.desc`)}</div>
       ${ev.txs.length ? ev.txs.map((h) => `<div class="hash"><a class="v mono" href="${bscscanTx(h)}" target="_blank" rel="noopener">${h}</a></div>`).join("") : ""}
-      <div class="desc" style="color:var(--amber)">${ev.note || ""}</div>
+      ${ev.hasNote ? `<div class="desc" style="color:var(--amber)">${t(`${ev.key}.note`)}</div>` : ""}
     </div>`).join("");
 }
 
@@ -495,15 +560,15 @@ async function startViz() {
   if (viz || vizBusy) return;
   vizBusy = true;
   const btn = el("viz-start");
-  if (btn) btn.textContent = "LOADING…";
+  if (btn) label(btn, "c00.btn_loading");
   try {
     const { createWormViz } = await import("./worm3d.js");
     viz = await createWormViz({ container: el("viz-wrap") });
     const off = el("viz-off");
     if (off) off.remove();
-    if (btn) { btn.textContent = "3D RUNNING"; btn.classList.add("on"); }
+    if (btn) { label(btn, "c00.btn_running"); btn.classList.add("on"); }
   } catch (e) {
-    if (btn) btn.textContent = "START 3D";
+    if (btn) label(btn, "c00.btn_start");
     console.error("[3d] failed to start", e && e.message ? e.message : e);
   } finally {
     vizBusy = false;
@@ -515,22 +580,24 @@ function stopViz() {
   viz.stop();
   viz = null;
   const btn = el("viz-start");
-  if (btn) { btn.textContent = "START 3D"; btn.classList.remove("on"); }
+  if (btn) { label(btn, "c00.btn_start"); btn.classList.remove("on"); }
   const wrap = el("viz-wrap");
   if (wrap && !wrap.querySelector(".viz-off")) {
     const d = document.createElement("div");
     d.className = "viz-off";
     d.id = "viz-off";
-    d.textContent = "3D demo stopped. Press START 3D to resume.";
+    // tagged like the markup it replaces, so the next language switch finds it the same way
+    d.setAttribute("data-i18n", "c00.stopped");
+    d.textContent = t("c00.stopped");
     wrap.appendChild(d);
   }
 }
 
 function wireViz() {
-  const s = el("viz-start");
-  const t = el("viz-stop");
-  if (s) s.addEventListener("click", startViz);
-  if (t) t.addEventListener("click", stopViz);
+  const start = el("viz-start");
+  const stop = el("viz-stop");
+  if (start) start.addEventListener("click", startViz);
+  if (stop) stop.addEventListener("click", stopViz);
 }
 
 // The poke module is one of the site's two sanctioned write paths and is
@@ -544,14 +611,14 @@ function wirePoke() {
     try {
       const m = await import("./poke.js");
       m.init();
-      b.textContent = "POKE UI ON";
+      label(b, "c04.btn_on");
       b.disabled = true;
       const f = el("poke-food"), a = el("poke-avert");
       if (f) f.disabled = false;
       if (a) a.disabled = false;
     } catch (e) {
       const s = el("poke-status");
-      if (s) s.textContent = "poke module failed to load: " + ((e && e.message) || e);
+      if (s) label(take(s), "c04.load_fail", { m: (e && e.message) || e });
     }
   }, { once: true });
 }
@@ -567,11 +634,11 @@ function wireReplay() {
     try {
       const m = await import("./replay.js");
       await m.start(el("replay-stage"));
-      b.textContent = "RECORDING LOADED";
+      label(b, "c06.btn_loaded");
     } catch (e) {
       b.disabled = false;
       const s = el("replay-status");
-      if (s) s.textContent = "recording failed to load: " + ((e && e.message) || e);
+      if (s) label(take(s), "c06.load_fail", { m: (e && e.message) || e });
     }
   }, { once: true });
 }
@@ -584,27 +651,35 @@ function wireWall() {
   if (!b) return;
   b.addEventListener("click", async () => {
     b.disabled = true;
-    b.textContent = "LOADING…";
+    label(b, "c00.btn_loading");
     try {
       const m = await import("./wall.js");
       m.init();
-      b.textContent = "WALL ONLINE";
+      label(b, "c05.btn_online");
     } catch (e) {
       b.disabled = false;
-      b.textContent = "READ THE WALL";
+      label(b, "c05.btn_read");
       const s = el("wall-status");
-      if (s) { s.textContent = "wall module failed to load: " + ((e && e.message) || e); s.className = "v err"; }
+      if (s) { label(take(s), "c05.load_fail", { m: (e && e.message) || e }); s.className = "v err"; }
     }
   }, { once: true });
 }
 
 async function boot() {
-  el("rpc-host").textContent = seedLabel(RPC_SEEDS[0]);
+  // the dictionary is applied before anything is drawn, so the very first paint of a
+  // Chinese visitor is Chinese and never a flash of English
+  initI18n();
+  // the page owns the status line from here on: the boot word is already painted
+  take(el("status-text"));
+  setText("rpc-host", seedLabel(RPC_SEEDS[0]));
   renderEvidence();
   wireViz();
   wirePoke();
   wireReplay();
   wireWall();
+  // a language switch re-renders from the reading already in hand, re-renders the static
+  // evidence, and only then lets one slow beat re-word the event feed from the chain
+  onLangChange(() => { renderReadout(); renderEvidence(); poll(true); });
   // the slow beat runs first: it resolves the brain address the fast beat reads the raw
   // tick from, and neither interval starts before that first pair has landed
   await poll(true);

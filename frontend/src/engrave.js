@@ -25,6 +25,7 @@
  * anybody.
  */
 import { BrowserProvider, Contract, formatEther, formatUnits, parseUnits } from "ethers";
+import { t, label, take, onLangChange } from "./i18n.js";
 
 export const LEDGER = "0x16a4d26C90fE7613f22Da41150E4847e1fE47495";
 export const TOKEN = "0xA18f90eF3d4cc543141986c80442F87a2d2a7777";
@@ -57,21 +58,27 @@ let ctx = null;
 let provider = null;
 let account = null;
 
-function say(text, cls) {
+function say(key, params, cls) {
   const s = el("wall-status");
   if (!s) return;
-  s.textContent = text;
+  label(take(s), key, params);
   s.className = "v " + (cls || "");
 }
 
-/** The contract's own text policy, mirrored so a bad string never costs gas. */
+/** The contract's own text policy, mirrored so a bad string never costs gas. It
+ *  answers with a dictionary key and its holes, never with a sentence: the message is
+ *  shown on screen and thrown as an error, and both paths render it in the language
+ *  the visitor is reading. */
 export function textProblem(text, max) {
-  if (!text.length) return "write something — an empty slot is not an inscription";
-  if (text.length > max) return `${text.length} characters, the ceiling is ${max}`;
+  if (!text.length) return { key: "c05f.empty_text" };
+  if (text.length > max) return { key: "c05f.long_text", params: { n: text.length, max } };
   for (let i = 0; i < text.length; i++) {
     const c = text.charCodeAt(i);
     if (c < 0x20 || c > 0x7e) {
-      return `character "${text[i] === " " ? "space" : text[i]}" at position ${i + 1} is not printable ASCII — the wall refuses markup, control bytes and non-ASCII, and so do I`;
+      return {
+        key: "c05f.bad_char",
+        params: { c: text[i] === " " ? t("c05f.char_space") : text[i], i: i + 1 },
+      };
     }
   }
   return null;
@@ -90,21 +97,27 @@ async function readWalletState() {
     token.allowance(account, LEDGER), token.balanceOf(account), token.symbol(), token.decimals(), ledger.price(),
   ]);
   const need = minSend(price);
-  setText("wall-wallet", `${shortAddr(account)} holds ${Number(formatEther(balance)).toFixed(4)} ${symbol}`);
-  setText("wall-allow", `${Number(formatEther(allowance)).toFixed(4)} ${symbol} approved · this form sends ${Number(formatEther(need)).toFixed(4)} for one slot`);
+  label(el("wall-wallet"), "c05f.holds", {
+    addr: shortAddr(account), n: Number(formatEther(balance)).toFixed(4), sym: symbol,
+  });
+  label(el("wall-allow"), "c05f.allow_line", {
+    n: Number(formatEther(allowance)).toFixed(4), sym: symbol, m: Number(formatEther(need)).toFixed(4),
+  });
   const nominalEl = el("wall-nominal");
   if (nominalEl && !nominalEl.value) nominalEl.value = formatUnits(need, Number(decimals));
   const btn = el("wall-send");
   if (btn) btn.disabled = balance < need;
-  if (btn && balance < need) say(`your balance is ${formatEther(balance)} ${symbol}; an inscription needs at least ${formatEther(need)} to survive the transfer tax`, "err");
+  if (btn && balance < need) say("c05f.low_balance", {
+    n: formatEther(balance), sym: symbol, m: formatEther(need),
+  }, "err");
 }
 
 async function connect() {
-  if (!window.ethereum) { say("no wallet detected — an EIP-1193 browser wallet is required to engrave", "err"); return false; }
+  if (!window.ethereum) { say("c05f.no_wallet", null, "err"); return false; }
   provider = provider || new BrowserProvider(window.ethereum);
   const net = await provider.getNetwork();
   if (BigInt(net.chainId) !== CHAIN_ID) {
-    say(`your wallet is on chain ${net.chainId}; the worm lives on BNB Chain mainnet (56) — switch network and try again`, "err");
+    say("c05f.wrong_chain", { net: net.chainId }, "err");
     return false;
   }
   const signer = await provider.getSigner();
@@ -125,7 +138,7 @@ async function send() {
     const slotRaw = ((el("wall-slot") && el("wall-slot").value) || "").trim();
     const text = (el("wall-text") && el("wall-text").value) || "";
     const nominalRaw = ((el("wall-nominal") && el("wall-nominal").value) || "0").trim();
-    if (!/^(0|[1-9][0-9]*)$/.test(slotRaw)) throw new Error("slot must be a whole number");
+    if (!/^(0|[1-9][0-9]*)$/.test(slotRaw)) throw new Error(t("c05f.err_slot"));
     const slot = BigInt(slotRaw);
     const nominal = parseUnits(nominalRaw || "0", 18);
 
@@ -137,35 +150,33 @@ async function send() {
     // pre-flight everything the contract will also enforce, so a mistake costs a
     // keystroke here instead of a fee on mainnet
     const problem = textProblem(text, Number(maxLen));
-    if (problem) throw new Error(problem);
-    if (slot > currentSlot) throw new Error(`slot ${slot} has not been lived yet — the newest one is ${currentSlot}`);
-    if (entry.text) throw new Error(`slot ${slot} is already engraved ("${entry.text}") — the wall has no overwrite`);
-    if (nominal < need) throw new Error(`this form asks for at least ${formatUnits(need, 18)} (the price divided by 0.97, plus a 2% margin) — sending ${formatUnits(nominal, 18)} risks delivering under the price once the tax is taken`);
+    if (problem) throw new Error(t(problem.key, problem.params));
+    if (slot > currentSlot) throw new Error(t("c05f.err_not_lived", { slot, newest: currentSlot }));
+    if (entry.text) throw new Error(t("c05f.err_taken", { slot, text: entry.text }));
+    if (nominal < need) throw new Error(t("c05f.err_nominal", { need: formatUnits(need, 18), got: formatUnits(nominal, 18) }));
 
     const allowance = await token.allowance(account, LEDGER);
     if (allowance < nominal) {
-      say(`step 1 of 2: approving ${formatUnits(nominal, 18)} for the ledger to pull — confirm in your wallet`, "");
+      say("c05f.step1", { n: formatUnits(nominal, 18) }, "");
       const a = await token.approve(LEDGER, nominal);
       await a.wait();
-      say("approval landed · step 2 of 2: engraving — confirm in your wallet", "");
+      say("c05f.step2", null, "");
     } else {
-      say("allowance already covers this — engraving, confirm in your wallet", "");
+      say("c05f.allow_covers", null, "");
     }
 
     const tx = await ledger.inscribe(slot, text, nominal);
-    say(`sent ${tx.hash.slice(0, 18)}… waiting for the block`, "");
+    say("c05f.sent", { h: tx.hash.slice(0, 18) }, "");
     const rcpt = await tx.wait();
-    if (rcpt.status !== 1) throw new Error("the transaction reverted — nothing was engraved");
+    if (rcpt.status !== 1) throw new Error(t("c05f.reverted"));
     const fee = rcpt.gasUsed * (rcpt.gasPrice ?? (await provider.getFeeData()).gasPrice ?? 0n);
-    say(
-      `engraved into slot ${slot} at block ${rcpt.blockNumber} · ${formatUnits(nominal, 18)} sent and what arrived was burned · ` +
-      `you paid ${Number(formatEther(fee)).toFixed(6)} BNB gas · this can never be edited or removed`,
-      "ok",
-    );
+    say("c05f.engraved", {
+      slot, block: rcpt.blockNumber, n: formatUnits(nominal, 18), gas: Number(formatEther(fee)).toFixed(6),
+    }, "ok");
     if (ctx && ctx.refresh) await ctx.refresh();
   } catch (e) {
     const m = (e && (e.shortMessage || e.reason || e.message)) || String(e);
-    say("not engraved: " + m, "err");
+    say("c05f.not_engraved", { m }, "err");
   } finally {
     const again = el("wall-send");
     if (again) again.disabled = false;
@@ -183,10 +194,10 @@ export async function mount(where) {
   // same contract cannot disagree: this module spends real tokens, so it would
   // rather refuse to appear than write to a ledger it did not pick itself
   if (String(where.ledger).toLowerCase() !== LEDGER.toLowerCase()) {
-    throw new Error("the wall handed this module a ledger it does not pin");
+    throw new Error(t("c05f.pin_ledger"));
   }
   if (String(where.token).toLowerCase() !== TOKEN.toLowerCase()) {
-    throw new Error("the wall handed this module a token it does not pin");
+    throw new Error(t("c05f.pin_token"));
   }
   const f = typeof where.facts === "function" ? where.facts() : null;
   const slotEl = el("wall-slot"), textEl = el("wall-text"), nominalEl = el("wall-nominal"), preview = el("wall-preview");
@@ -199,24 +210,35 @@ export async function mount(where) {
   if (nominalEl && f) nominalEl.value = formatUnits(minSend(f.price), f.decimals);
   if (textEl) {
     textEl.maxLength = maxLen;
-    textEl.addEventListener("input", () => {
-      const p = textProblem(textEl.value, maxLen);
-      if (preview) preview.textContent = p || `${textEl.value.length}/${maxLen} · "${textEl.value}"`;
-      if (preview) preview.className = p ? "note err" : "note";
-    });
+    textEl.addEventListener("input", paintPreview);
   }
+  // a language switch re-answers the text check: the rule is the contract's own and
+  // never moves, only the wording it is told back in changes
+  onLangChange(paintPreview);
+
+  function paintPreview() {
+    if (!preview || !textEl) return;
+    const p = textProblem(textEl.value, maxLen);
+    if (p) label(take(preview), p.key, p.params);
+    else label(take(preview), "c05f.preview", { len: textEl.value.length, max: maxLen, text: textEl.value });
+    preview.className = p ? "note err" : "note";
+  }
+
   const connectBtn = el("wall-connect");
   if (connectBtn) {
     connectBtn.addEventListener("click", async () => {
       connectBtn.disabled = true;
       try {
         if (await connect()) {
+          // an address is not prose: the module takes the node over so a language
+          // switch leaves the connected account on the button instead of "ATTACH WALLET"
+          take(connectBtn);
           connectBtn.textContent = shortAddr(account);
           await readWalletState();
-          say("wallet attached — the two buttons below still need your confirmation inside the wallet", "ok");
+          say("c05f.attached", null, "ok");
         }
       } catch (e) {
-        say("wallet refused: " + ((e && (e.shortMessage || e.message)) || e), "err");
+        say("c05f.wallet_refused", { m: (e && (e.shortMessage || e.message)) || e }, "err");
       } finally {
         if (connectBtn) connectBtn.disabled = false;
       }
@@ -224,5 +246,5 @@ export async function mount(where) {
   }
   const btn = el("wall-send");
   if (btn) btn.addEventListener("click", send);
-  say("engraving armed — nothing has been sent; the form only acts after you confirm in your own wallet", "ok");
+  say("c05f.armed_idle", null, "ok");
 }

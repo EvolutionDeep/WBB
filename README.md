@@ -408,6 +408,35 @@ beats. Other sites embed it with:
         style="border:0;border-radius:10px" title="on-chain worm"></iframe>
 ```
 
+`https://bscworm.com/badge.html?lang=zh` renders the same widget in Chinese. The badge
+imports nothing at all -- not even the dashboard's language catalogue -- so it carries
+its own two languages inline and stays English unless the URL or the visitor's stored
+choice asks for Chinese.
+
+### Two languages, English by default
+
+Every user-visible string on the page lives in `frontend/src/i18n.js` as one key with two
+values, `{ en, zh }`, side by side so the two cannot drift apart. The dashboard boots in
+English and switches to Chinese from the button in the header; the choice is stored in
+`localStorage.wbb_lang`, and `?lang=zh` / `?lang=en` pins one link without overwriting
+what the visitor chose for the rest of the site.
+
+Switching language costs no network read. Each card keeps the numbers it already read and
+re-words them in place, so a live reading -- a head block, a stimulus feed, a wall
+progress line, a wallet's own refusal -- never falls back to a placeholder, and numbers
+and clock times are formatted for the active locale rather than inherited from the
+machine. Contract names, addresses, transaction hashes, on-chain event names and neuron
+names are identifiers and are never translated. The Chinese exists only inside the two
+dictionaries; every comment, every document, every commit message in this repository
+stays English.
+
+`npm test` asserts all of that, and it asserts the two halves that a translation project
+usually forgets: no key may be missing a language, no Chinese entry may be an English
+string copied twice, both languages must accept the same `{parameters}`, every key named
+by a module or by a `data-i18n` attribute must resolve in the catalogue (an unresolved
+key would print its own name on the page), and no shipped module may contain a Han
+character at all.
+
 ### Poke the worm (opt-in write path)
 
 `inject(int256)` on the deployed `SenseAdapter` was always permissionless —
@@ -648,7 +677,8 @@ the time-lapse card (`### Time-lapse`) plays a static
 recording of replayed on-chain state. `npm test` runs a static read-only guardrail
 covering every module except those two, each of which gets a narrower dedicated
 fence, plus an integrity check on the replay recording and an existence check for
-every element id the wall touches; `npm run build` emits `dist/` including the
+every element id the wall touches, and a completeness check on the two language
+catalogues (`### Two languages, English by default`); `npm run build` emits `dist/` including the
 embeddable badge and `data/replay.json`.
 
 ```powershell

@@ -17,6 +17,7 @@
  * imported only after the visitor explicitly enables it.
  */
 import { BrowserProvider, Contract, formatEther } from "ethers";
+import { t, label, take, onLangChange } from "./i18n.js";
 
 export const ADAPTER = "0xbe0C5117f740a9333614D806Bd50C3907186C6fD";
 // ampCap on the deployed adapter is 2097152 (2.0 in Q20); a full-scale poke
@@ -43,14 +44,22 @@ const LOG_RANGE = 9000; // blocks per scan window, inside publicnode's log cap
 
 let provider = null;
 let feedTimer = null;
+// the last message this module showed, kept as key + parameters so a language switch
+// can render the same fact in the other tongue instead of leaving stale English up
+let lastStatus = null;
 
 const el = (id) => document.getElementById(id);
 
-function setStatus(text, cls) {
+function setStatus(key, params, cls) {
   const s = el("poke-status");
   if (!s) return;
-  s.textContent = text;
+  lastStatus = { key, params: params || null, cls: cls || "" };
+  label(take(s), key, params);
   s.className = "v " + (cls || "");
+}
+
+function repaintStatus() {
+  if (lastStatus) setStatus(lastStatus.key, lastStatus.params, lastStatus.cls);
 }
 
 /** One fetch-based JSON-RPC helper for the read-only log feed (no wallet). */
@@ -93,7 +102,7 @@ async function refreshFeed() {
       .map((lg) => ({ log: lg, parsed: iface.parseLog({ topics: lg.topics, data: lg.data }) }))
       .filter((x) => x.parsed);
     if (!evs.length) {
-      list.innerHTML = '<div class="note">no pokes on record in the recent window — be the first, or let the keeper lead.</div>';
+      list.innerHTML = `<div class="note">${t("c04.feed_empty")}</div>`;
       return;
     }
     const blocks = [...new Set(evs.map((x) => Number(BigInt(x.log.blockNumber))))];
@@ -104,26 +113,26 @@ async function refreshFeed() {
     }));
     list.innerHTML = evs.map((x) => {
       const a = x.parsed.args;
-      const neuron = BigInt(a.idx) === 39n ? "ASEL" : BigInt(a.idx) === 40n ? "ASER" : "idx " + a.idx;
+      const neuron = BigInt(a.idx) === 39n ? "ASEL" : BigInt(a.idx) === 40n ? "ASER" : t("c04.idx", { n: a.idx });
       const amp = Number(BigInt(a.amp)) / 1048576;
-      const t = ts[Number(BigInt(x.log.blockNumber))];
-      const ago = t ? Math.max(0, Math.round((Date.now() / 1000 - t) / 60)) + "m ago" : "";
+      const ts2 = ts[Number(BigInt(x.log.blockNumber))];
+      const ago = ts2 ? t("c04.ago_min", { m: Math.max(0, Math.round((Date.now() / 1000 - ts2) / 60)) }) : "";
       return `<div class="row"><span class="k">${shortAddr(a.from)}</span>` +
         `<span class="v">${amp >= 0 ? "+" : ""}${amp.toFixed(2)} → ${neuron} · <span class="note">${ago}</span></span></div>`;
     }).join("");
   } catch (e) {
-    list.innerHTML = `<div class="note">poke feed unavailable: ${(e && e.message) || e}</div>`;
+    list.innerHTML = `<div class="note">${t("c04.feed_fail", { m: (e && e.message) || e })}</div>`;
   }
 }
 
 /** Send inject(int256) from the visitor's own wallet. Nothing else, ever. */
 async function poke(intensity) {
   if (!window.ethereum) {
-    setStatus("no wallet detected — install an EIP-1193 browser wallet first", "err");
+    setStatus("c04.no_wallet", null, "err");
     return;
   }
   try {
-    setStatus("waiting for your wallet…", "");
+    setStatus("c04.waiting", null, "");
     provider = provider || new BrowserProvider(window.ethereum);
     const signer = await provider.getSigner();
     const who = await signer.getAddress();
@@ -135,22 +144,21 @@ async function poke(intensity) {
     const net = await provider.getNetwork();
     if (BigInt(net.chainId) !== 56n) throw new Error("connect to BNB Chain mainnet (chainId 56)");
     const tx = await c.inject(intensity);
-    setStatus("tx sent: " + tx.hash.slice(0, 18) + "… waiting for receipt", "");
+    setStatus("c04.tx_sent", { h: tx.hash.slice(0, 18) }, "");
     const rcpt = await tx.wait();
     if (rcpt.status === 1) {
       const fee = rcpt.gasUsed * (rcpt.gasPrice ?? await provider.getFeeData().then((f) => f.gasPrice));
-      setStatus(
-        `poked ${intensity >= 0n ? "ASEL (food-like)" : "ASER (repellent-like)"} · ` +
-        `you paid ${Number(formatEther(fee ?? 0n)).toFixed(6)} BNB gas · takes effect on the next advance`,
-        "ok",
-      );
+      setStatus("c04.poked", {
+        where: t(intensity >= 0n ? "c04.where_asel" : "c04.where_aser"),
+        gas: Number(formatEther(fee ?? 0n)).toFixed(6),
+      }, "ok");
     } else {
-      setStatus("poke tx reverted — nothing was written", "err");
+      setStatus("c04.reverted", null, "err");
     }
     refreshFeed();
   } catch (e) {
     const m = (e && (e.shortMessage || e.message)) || String(e);
-    setStatus("not sent: " + m, "err");
+    setStatus("c04.not_sent", { m }, "err");
   }
 }
 
@@ -158,6 +166,7 @@ export function init() {
   const food = el("poke-food"), avert = el("poke-avert");
   if (food) food.addEventListener("click", () => poke(FULL_POKE));
   if (avert) avert.addEventListener("click", () => poke(-FULL_POKE));
+  onLangChange(() => { repaintStatus(); refreshFeed(); });
   refreshFeed();
   feedTimer = feedTimer || setInterval(refreshFeed, FEED_MS);
 }
