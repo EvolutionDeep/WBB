@@ -155,6 +155,20 @@ has(replayHtml.includes('id="card-wall"') && replayHtml.includes('<span class="n
 has(replayHtml.includes(LEDGER_ADDR), "the page names the live ledger the wall modules read");
 has(replayHtml.includes(OLD_LEDGER_ADDR) && replayHtml.includes("superseded"), "the page discloses the superseded 1-token wall");
 absent(replayHtml, "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3", "the wall card names no brain address: the ledger is the only entry point");
+// --- the project's own two front doors: the account it speaks from and the repository
+// it is built in. A drifted URL sends visitors somewhere that is not this project.
+for (const url of ["https://x.com/WormBrainBsc", "https://github.com/EvolutionDeep/WBB"]) {
+  has(replayHtml.includes(`href="${url}"`), `the page links out to ${url}`);
+}
+// in the header, above the dashboard, so they are seen before anyone scrolls
+const headerHtml = replayHtml.slice(0, replayHtml.indexOf('<div class="grid">'));
+has(/class="links"[\s\S]*?x\.com\/WormBrainBsc[\s\S]*?github\.com\/EvolutionDeep\/WBB[\s\S]*?<\/nav>/.test(headerHtml),
+  "both outbound links sit in the header, above the card grid");
+// and no anchor may open a new tab while leaving the new page the ability to reach back
+{
+  const naked = [...replayHtml.matchAll(/<a\b[^>]*target="_blank"[^>]*>/g)].filter((m) => !/rel="[^"]*noopener/.test(m[0]));
+  has(naked.length === 0, `every new-tab anchor declares rel=noopener (${naked.length} without it)`);
+}
 {
   // every element id the two wall modules touches must exist in the shipped HTML,
   // or the card would silently half-render against a null node

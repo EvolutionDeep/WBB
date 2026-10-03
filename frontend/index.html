@@ -27,6 +27,16 @@
   h1 b { color: var(--cy); font-weight: 400; }
   .tagline { font-size: 11px; color: rgba(148,205,226,0.6); letter-spacing: 0.1em; margin-top: 4px; }
 
+  /* the project's own two front doors: the account it speaks from, and the source */
+  .links { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .links a {
+    font-size: 11px; letter-spacing: 0.1em; color: var(--cy); text-decoration: none;
+    border: 1px solid rgba(53,224,255,0.22); border-radius: 2px; padding: 3px 10px;
+    background: rgba(53,224,255,0.05);
+  }
+  .links a:hover { border-color: rgba(53,224,255,0.6); background: rgba(53,224,255,0.12); }
+  .links a b { color: #dff5ff; font-weight: 400; }
+
   .grid {
     max-width: 1180px; margin: 0 auto; display: grid; gap: 14px;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -177,6 +187,10 @@
     is ever spent here are the opt-in poke and the opt-in engraving, each pinned to one contract and
     signed by your own wallet
   </div>
+  <nav class="links">
+    <a href="https://x.com/WormBrainBsc" target="_blank" rel="noopener me">X · <b>@WormBrainBsc</b></a>
+    <a href="https://github.com/EvolutionDeep/WBB" target="_blank" rel="noopener me">GitHub · <b>EvolutionDeep/WBB</b></a>
+  </nav>
 </header>
 
 <div class="grid">
