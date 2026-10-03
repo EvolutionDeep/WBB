@@ -406,6 +406,58 @@ estimated compute-unit cost up front. The smoke test asserts the recording is
 contiguous from tick 1, correctly sized per frame, and that the player never
 touches the network beyond its own JSON asset.
 
+## Token endowments
+
+The token has no claim on the project and the tax vault is not project income, so
+neither can a holder be paid from cash flow. What is real and sellable is therefore
+scarcity of two specific things: a permanent place in the animal's record, and
+information about its next beat that nobody can buy before it happens.
+
+**`WormLedger.sol` — the inscription wall.** Life is chopped into slots of
+`TICKS_PER_SLOT` ticks and a slot can be engraved exactly once, forever, only after
+the ticks inside it have actually occurred. The text is 1–64 printable ASCII bytes
+(so a browser can render it without an XSS question), the slot can never be edited,
+removed, paused or upgraded — there is no owner, no setter, no withdrawal — and what
+you pay is burnt to the zero address in the same transaction that takes it.
+
+**`WormGuess.sol` — the per-beat wager.** A round asks one factual question about one
+specific upcoming tick: will more than N of the 302 neurons fire in that single step?
+Staking is refused as soon as `brain.tick()` has reached the target, so nobody can bet
+on a beat they have already watched, and settling is only legal exactly on that tick,
+so the answer comes from `totalSpikes` differences and nothing else. If the beat passes
+unsettled the round refunds — the stake is never re-dealt to whichever side calls first.
+Winners claim from the contract; it never holds a balance it can be run off.
+
+Both are read-only with respect to the organism: neither can `advance` or `stimulate`,
+and the test suite asserts that from the ABI rather than from my word for it.
+Prices are defined as what **arrives**, measured as a `balanceOf` difference, because
+the token charges 3% on transfer: asking for 1.0 is not the same as receiving 1.0, and
+a contract that pretended otherwise would be short-changing itself.
+
+Why there is no paid influence over the worm. An earlier design sold a quota on
+`stimulate`, on the assumption that stimulus capacity is a contested resource. It is
+not: `stimulate(index, amp)` is permissionless and one transaction at `ampCap` drives
+that neuron's stimulus to its ceiling (+/-8.0) *and* its memory to +/-2.0 at the same
+time (`K_MEM` writes memory inline, and only the neuron's own spikes erode it, ~0.5%
+each). Anyone — paying or not — can saturate the memory of any of the 302 neurons in
+one gas-fee transaction, permanently shaping this animal. That is a property of an
+unpermissioned on-chain life form, not a flaw in a payment scheme, so no paid tier could
+have made it exclusive and I withdrew the idea rather than sell something counterfeit.
+The 302 memory slots currently read 0.000: the first person to write one is not buying
+a privilege, they are writing on the animal, and that is now documented here.
+
+```bash
+cd contracts
+node scripts/deploy_endowments.js                       # plan only, sends nothing
+node scripts/deploy_endowments.js --on testnet          # 97 rehearsal, mock 3% token
+node scripts/deploy_endowments.js --on mainnet --i-authorize-mainnet
+```
+
+Mainnet deployment is a separate deliberate act behind an explicit flag; the script
+reads `tick()`/`stateHash()` before and after and aborts if its own deployment moved
+the animal. Status: contracts written, `npx hardhat test` covers them (23 cases across
+the two suites, all local), nothing deployed yet.
+
 ## Determinism
 
 `worm/brain_spec.py` is the authoritative integer spec (MIT license, Q20 fixed
