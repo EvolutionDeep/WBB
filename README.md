@@ -315,22 +315,32 @@ Three.js, lazily imported so the base page carries no 3D dependency). Pressing
 START renders the whole animal from the corrected connectome — 302 neurons and
 5144 directed synapses from `public/data/graph.json`, regenerated from the
 authoritative `worm/data/brain_weights.json` by `scripts/gen_frontend_data.py`
-so the picture cannot drift from the deployed `connRoot`.
+so the picture cannot drift from the deployed `connRoot` — each cell placed by
+`public/data/layout.json` and coloured by its anatomical group (nerve ring, head
+sensory, motor, cord interneuron, postdeirid, tail).
 
-It is read-only in the strictest sense: every frame is driven by batched
-`eth_call` reads of the live brain's public view getters — per-neuron membrane
-voltage `V(i)`, `spikeCount(i)`, motor `gate(i)`, `tick`, `connRoot` — and the
-module encodes no state-changing call at all (the smoke test asserts this).
-Node brightness maps `V` through a ±`V_THRESH` display band with gamma 2, a
-white flash marks a spike-count increment, and the body's peristaltic wave
-amplitude comes from the motor-neuron gates. Any display gains applied to make
-small signals visible are stated in the HUD rather than silently inflated. When
-`tick` stops changing (nobody paid for an `advance`), the wave freezes and the
-HUD shows **HALTED** — the viewer never animates a frozen animal. Liveness is
-judged against the node's *learned* heartbeat cadence (an EMA of observed tick
-intervals, floored at 90 s): a deliberately slow keeper is not misreported as
-dead, while a real stall still freezes within three learned beats. The HUD also
-prints the age of the last advance, so the pace is never hidden.
+It is a **demo, and it says so**: the module holds no chain access at all. It
+opens no provider and names no endpoint, requesting nothing beyond those two
+local anatomy files, so it cannot stall on a rate limit, be fooled by a bad
+endpoint, or go blank when an RPC misbehaves. What is real is the anatomy — the
+identity of every cell, its position along the body, and the direction of every
+synapse it lights up: the signal pulses travel strictly pre → post along
+`graph.json`'s own edges, so a pulse that reaches a cell continues down that
+cell's axon. What is invented is everything moving: the peristaltic wave, a
+seeded schedule of crawl / pause / reversal / turn episodes, each cell's
+brightness, the pulse traffic. The HUD prints `DEMO — nothing here is read from
+the chain` on every frame and ends with the animal's live state being on card 01,
+and the hover readout calls the number `demo drive` rather than a voltage.
+The smoke test now fences the weaker half of that promise mechanically: it fails
+if `worm3d.js` gains an ethereum client, a provider, an `eth_call`, a hard-coded
+endpoint, or a state-changing encoding.
+
+This replaced an earlier viewer that drove each frame from batched `eth_call`
+reads of `V(i)`, `spikeCount(i)`, the motor gates, `tick` and `connRoot`, freezing
+the body and printing **HALTED** whenever `tick` stopped moving. That is no longer
+this card's job; the honest liveness readouts are the identity card (verdict,
+last-advance age and observed heartbeat on one screen), the life badge and the
+recording.
 
 ### Keep-alive nodes (anyone can run one)
 

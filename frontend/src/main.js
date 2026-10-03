@@ -425,18 +425,13 @@ function renderEvidence() {
     </div>`).join("");
 }
 
-// ---- 3D viewer: lazy-loaded, still strictly read-only ----
-// three.js is code-split and only fetched when the user presses START 3D, and the
-// viewer itself only ever issues eth_call reads against the deployed brain.
+// ---- 3D viewer: lazy-loaded demo, no chain access of any kind ----
+// three.js is code-split and only fetched when the user presses START 3D. The viewer
+// itself is a self-running animation of the connectome's shape: it issues no RPC call
+// at all, so it cannot fail, stall or be fooled, and it cannot imply that the animal is
+// advancing when it is not. Live state belongs to the identity cards, not to this canvas.
 let viz = null;
 let vizBusy = false;
-
-const vizTarget = () => ({
-  // the viewer batches hundreds of eth_call, so it gets the whole seed list and
-  // picks whichever endpoint actually serves batches (see worm3d.js)
-  rpcUrls: RPC_SEEDS,
-  brain: BRAIN_ADDR,
-});
 
 async function startViz() {
   if (viz || vizBusy) return;
@@ -445,7 +440,7 @@ async function startViz() {
   if (btn) btn.textContent = "LOADING…";
   try {
     const { createWormViz } = await import("./worm3d.js");
-    viz = await createWormViz({ container: el("viz-wrap"), getTarget: vizTarget });
+    viz = await createWormViz({ container: el("viz-wrap") });
     const off = el("viz-off");
     if (off) off.remove();
     if (btn) { btn.textContent = "3D RUNNING"; btn.classList.add("on"); }
@@ -468,7 +463,7 @@ function stopViz() {
     const d = document.createElement("div");
     d.className = "viz-off";
     d.id = "viz-off";
-    d.textContent = "3D viewer stopped — chain polling halted. Press START 3D to resume.";
+    d.textContent = "3D demo stopped. Press START 3D to resume.";
     wrap.appendChild(d);
   }
 }

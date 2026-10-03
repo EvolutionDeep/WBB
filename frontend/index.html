@@ -90,11 +90,16 @@
   #dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
   .ro { color: var(--amber); letter-spacing: 0.14em; }
 
-  /* 3D viewer: live connectome + on-chain voltages, read-only */
+  /* 3D viewer: a self-running demo of the connectome, no chain access */
   .viz-card { grid-column: 1 / -1; }
   #viz-wrap {
     position: relative; height: 470px; border: 1px solid rgba(53,224,255,0.16);
-    border-radius: 3px; background: #050a0e; overflow: hidden;
+    border-radius: 3px; background: #040910; overflow: hidden;
+  }
+  /* a soft vignette so the body reads against the dark and the glow pools in the middle */
+  #viz-wrap::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse at 50% 46%, rgba(0,0,0,0) 48%, rgba(2,7,11,0.62) 100%);
   }
   #viz-wrap canvas { width: 100% !important; height: 100% !important; border: 0; display: block; }
   .viz-off {
@@ -111,6 +116,7 @@
   .viz-hud .ok { color: var(--grn); }
   .viz-hud .halt { color: var(--red); }
   .viz-hud .err { color: var(--amber); }
+  .viz-hud .demo { color: var(--mag); letter-spacing: 0.08em; }
   .viz-tip {
     position: absolute; right: 8px; bottom: 8px; font-size: 10px; color: #dff5ff;
     background: rgba(4,10,16,0.72); border: 1px solid rgba(53,224,255,0.2);
@@ -124,8 +130,9 @@
   }
   .viz-bar button:hover { border-color: var(--cy); color: #dff5ff; }
   .viz-bar button.on { background: rgba(53,224,255,0.22); color: #dff5ff; border-color: var(--cy); }
-  .viz-legend { display: flex; gap: 14px; font-size: 10px; color: rgba(148,205,226,0.7); margin-top: 6px; }
+  .viz-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 10px; color: rgba(148,205,226,0.7); margin-top: 6px; }
   .viz-legend i { display: inline-block; width: 14px; height: 2px; vertical-align: middle; margin-right: 5px; }
+  .viz-legend s { display: inline-block; width: 8px; height: 8px; border-radius: 50%; vertical-align: middle; margin-right: 5px; }
 
   /* 05 · the inscription wall (read-only view of an immutable WormLedger) */
   .wall-card { grid-column: 1 / -1; }
@@ -173,26 +180,32 @@
 </header>
 
 <div class="grid">
-  <!-- 0. 3D VIEWER (live, read-only) -->
+  <!-- 0. 3D VIEWER (self-running demo of the connectome) -->
   <section class="card viz-card" id="card-viz">
-    <h2><span class="num">00</span> · 3D worm — connectome and live membrane voltage</h2>
+    <h2><span class="num">00</span> · 3D worm — the connectome, animated as a demo</h2>
     <div class="viz-bar">
       <button id="viz-start" type="button">START 3D</button>
       <button id="viz-stop" type="button">STOP</button>
       <span class="note">
-        loads three.js on demand, then reads V[302] · spikeCount[302] · motor gates · tick by batched
-        eth_call every 12 s. Body wave amplitude / direction come from the real motor gates: if the brain
-        stops advancing the wave stops too.
+        a pure visualisation. It loads three.js on demand plus the anatomy from
+        data/graph.json and data/layout.json — 302 neurons at their real positions and the
+        5,144 directed synapses — and then runs forever, crawling, reversing and turning.
+        It sends no request to the chain: the wave, the firing and the pulses along the
+        fibres are invented for the eye. The animal's actual state is on card 01.
       </span>
     </div>
     <div id="viz-wrap">
-      <div class="viz-off" id="viz-off">3D viewer is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its on-chain voltage.</div>
+      <div class="viz-off" id="viz-off">3D demo is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its name and its class.</div>
     </div>
     <div class="viz-legend">
       <span><i style="background:#2fd8ff"></i>excitatory synapse (pre → post)</span>
       <span><i style="background:#ff5b7f"></i>inhibitory synapse (pre → post)</span>
-      <span><i style="background:#8ff5d0"></i>neuron brightness = membrane voltage V</span>
-      <span><i style="background:#ffffff"></i>white flash = spikeCount incremented</span>
+      <span><s style="background:#7ef0ff"></s>nerve ring</span>
+      <span><s style="background:#ffd27a"></s>head sensory</span>
+      <span><s style="background:#6bff9e"></s>motor</span>
+      <span><s style="background:#93b9ff"></s>cord interneuron</span>
+      <span><s style="background:#c58bff"></s>postdeirid</span>
+      <span><s style="background:#ff7a9c"></s>tail</span>
     </div>
   </section>
 

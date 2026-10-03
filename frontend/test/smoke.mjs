@@ -174,20 +174,34 @@ for (const bad of ["fetch(", "eth_call", "JsonRpcProvider", "Contract("]) {
   has(bad !== "fetch(" ? count === 0 : count === 1, `player stays off the network beyond the asset (${bad}: ${count})`);
 }
 
-// --- 3D viewer specifics: it may only READ view getters, and its data must be the
-// corrected connectome (5144 directed edges over 302 neurons).
+// --- 3D viewer: it is a self-running demo now, so the guard is stronger than "read-only"
+// — it must hold no chain access whatsoever, must load only its two local anatomy files,
+// and its own HUD must keep saying out loud that the motion is invented.
 const viz = readFileSync(join(root, "src", "worm3d.js"), "utf8");
-has(viz.includes('"function V(uint256) view returns (int256)"'), "3D reads V() view getter");
-has(viz.includes('"function spikeCount(uint256) view returns (uint256)"'), "3D reads spikeCount() view getter");
-absent(viz, "advance(", "3D never encodes a state-changing advance()");
-absent(viz, "stimulate(", "3D never encodes stimulate()");
-absent(viz, "inject(", "3D never encodes inject()");
+absent(viz, "ethers", "3D demo imports no ethereum client");
+absent(viz, "JsonRpcProvider", "3D demo opens no provider");
+absent(viz, "eth_call", "3D demo issues no eth_call");
+absent(viz, "https://", "3D demo names no remote endpoint");
+absent(viz, "advance(", "3D demo never encodes a state-changing advance()");
+absent(viz, "stimulate(", "3D demo never encodes stimulate()");
+absent(viz, "inject(", "3D demo never encodes inject()");
+has(
+  viz.includes('fetch("data/graph.json")') && viz.includes('fetch("data/layout.json")'),
+  "3D demo loads only its two local anatomy files",
+);
+has(viz.includes("DEMO") && viz.includes("synthetic"), "3D HUD states the motion is a synthetic demo");
+absent(viz, "HALTED", "3D demo no longer claims to report chain liveness");
+absent(readFileSync(join(root, "src", "main.js"), "utf8"), "getTarget", "the demo is handed no chain target");
 
 const graph = JSON.parse(readFileSync(join(root, "public", "data", "graph.json"), "utf8"));
 const layout = JSON.parse(readFileSync(join(root, "public", "data", "layout.json"), "utf8"));
 has(graph.nNeurons === 302, "graph.json carries 302 neurons");
 has(graph.names.indexOf("ADEL") >= 0 && hasDir(graph, "ADEL", "RIH"), "graph.json direction is pre -> post (ADEL -> RIH present)");
 has(layout.neurons.length === 302, "layout.json carries 302 neuron placements");
+has(
+  layout.neurons.every((nb) => typeof nb.cls === "string"),
+  "every placement names a class, which is what the demo colours neurons by",
+);
 
 function hasDir(g, a, b) {
   const ia = g.names.indexOf(a), ib = g.names.indexOf(b);

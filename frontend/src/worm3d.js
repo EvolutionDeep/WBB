@@ -1,49 +1,50 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { ethers } from "ethers";
 
 /**
- * READ-ONLY 3D viewer for the on-chain worm.
+ * DEMO 3D viewer for the worm's connectome.
  *
- * Everything drawn here is on-chain state of the deployed WormBrainV2, fetched with
- * eth_call only (V[], spikeCount[], motor gate[], tick, connRoot). It never signs,
- * never sends a transaction and never runs a second copy of the brain in the browser.
+ * This module talks to nothing but two local data files. No ethereum client, no chain
+ * read of any kind, no signing: the animation is self-driven and runs forever, so the
+ * card is a visualisation of the animal's shape, not a reading of its state.
+ *
+ * What is still real: the anatomy. 302 neuron ids, their dorsoventral / left-right
+ * placement along the body and the 5,144 directed synapses come from graph.json and
+ * layout.json, which are generated from the connectome baked into the on-chain genome.
+ * Signal pulses therefore travel along genuine pre -> post edges, in the correct
+ * direction. What is synthetic: the peristaltic wave, the crawling/reversal schedule,
+ * every neuron's brightness and every pulse. The HUD says so on every frame.
  *
  * Honesty contract (project rule: no animation may pretend the animal is alive):
- *   - the peristaltic wave amplitude, direction and speed come from the real motor
- *     neuron gates read from the contract;
- *   - when the brain stops advancing (nobody pays gas), the wave decays to zero and
- *     the body freezes, and the HUD says HALTED.
+ * a live reading of the animal's state lives on the identity card, and this canvas is
+ * labelled DEMO with its drive described as synthetic.
  *
  * Comment policy: English only (project rule).
  */
 
-// ---- encoding helpers for the public array getters of WormBrainV2 ----
-const VIZ_IFACE = new ethers.Interface([
-  "function V(uint256) view returns (int256)",
-  "function gate(uint256) view returns (int256)",
-  "function spikeCount(uint256) view returns (uint256)",
-  "function tick() view returns (uint256)",
-  "function connRoot() view returns (bytes32)",
-]);
-
-// frozen motor / interneuron indices (WormNeurons table)
-const GATE_IDX = [53, 54, 55, 56, 72, 73, 76, 77, 39, 40]; // AVAL AVAR AVBL AVBR AWAL AWAR AWCL AWCR ASEL ASER
-const IDX = { AVAL: 53, AVAR: 54, AVBL: 55, AVBR: 56, AWAL: 72, AWAR: 73, AWCL: 76, AWCR: 77, ASEL: 39, ASER: 40 };
-
-// ---- scene constants (world units, purely visual) ----
+// ---- body shape (world units, purely visual) ----
 const LEN = 13; // body length
 const R0 = 0.85; // widest body radius
-const SAMPLES = 92; // rings along the body
-const RING = 18; // vertices per ring
+const SAMPLES = 100; // rings along the cuticle
+const RING = 20; // vertices per ring
+const G_SAMPLES = 64; // rings of the inner gut
+const G_RING = 12;
 const TAU = Math.PI * 2;
 const WAVES = 3.2; // wavelengths along the body
-const POLL_MS = 12000; // chain read cadence
-// One batch of a few hundred eth_call is what makes 302 live voltages affordable.
-// Not every public gateway honours JSON-RPC batches: bsc-dataseed replies HTTP 200
-// with an array whose items carry no result at all, so the reader below probes the
-// candidates and sticks to the first endpoint that actually answers the batch.
-const ETH_CHUNK = 300; // eth_call per JSON-RPC batch request
+const N_PULSE = 54; // travelling signals
+const N_DUST = 420; // suspended particles in the medium
+
+// ---- seeded pseudo-randomness: the demo plays the same choreography every load,
+// so a screenshot taken during review matches what a visitor sees ----
+function mulberry32(seed) {
+  let a = seed | 0;
+  return function () {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
 
 // analytic spine shared by the body mesh and the neuron placement: t 0 = nose, 1 = tail
 function spine(t) {
@@ -63,154 +64,482 @@ function upAt(t) {
   return { x: -ty / len, y: tx / len }; // perpendicular to the tangent, in the bending plane
 }
 
-export async function createWormViz({ container, getTarget }) {
-  // ---- static connectome + anatomy ----
+/**
+ * Displaced centreline plus its local frame. The cuticle, the gut, the nerve cord and
+ * every soma are all positioned through this one function, so nothing can drift out of
+ * the body when the wave changes.
+ */
+function frame(t, phase, amp, bend, out) {
+  const sp = spine(t);
+  const up = upAt(t);
+  const r = radiusAt(t);
+  const k = TAU * (WAVES * t) - phase;
+  // a second harmonic keeps the peristalsis from looking like a metronome
+  const dw = amp * r * (Math.sin(k) + 0.26 * Math.sin(2 * k - phase * 0.4));
+  const arch = bend * r * 1.15 * Math.sin(t * Math.PI);
+  const off = dw + arch;
+  out.x = sp.x + up.x * off;
+  out.y = sp.y + up.y * off;
+  out.z = amp * r * 0.3 * Math.sin(TAU * (WAVES * 0.5 * t) - phase * 0.85);
+  out.ux = up.x;
+  out.uy = up.y;
+  out.r = r;
+  return out;
+}
+
+// ---- neuron classes: one colour per anatomical group, so the picture reads as
+// a nervous system rather than as 302 identical dots ----
+const PALETTE = {
+  ring: 0x7ef0ff, // nerve ring around the pharynx
+  sensor_head: 0xffd27a, // head sensory endings
+  cord_motor: 0x6bff9e, // motor neurons of the ventral cord
+  cord_misc: 0x93b9ff, // cord interneurons
+  postdeirid: 0xc58bff, // post-deirid mechanosensors
+  midbody: 0x41e3c8,
+  tail: 0xff7a9c,
+};
+const FALLBACK = 0x9db8c8;
+
+// a soft round sprite for the additive glow layers
+function glowTexture() {
+  const n = 64;
+  const cv = document.createElement("canvas");
+  cv.width = n;
+  cv.height = n;
+  const g = cv.getContext("2d");
+  const grd = g.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2);
+  grd.addColorStop(0, "rgba(255,255,255,1)");
+  grd.addColorStop(0.22, "rgba(255,255,255,0.58)");
+  grd.addColorStop(0.6, "rgba(255,255,255,0.12)");
+  grd.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = grd;
+  g.fillRect(0, 0, n, n);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// glow points share one shader: world-sized squares that always face the camera
+function glowMaterial(tex) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: tex }, uProj: { value: 700 } },
+    vertexShader: `
+      attribute float aSize;
+      attribute vec3 aColor;
+      attribute float aAlpha;
+      uniform float uProj;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        vColor = aColor;
+        vAlpha = aAlpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = min(aSize * uProj / max(0.001, -mv.z), 260.0);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        float a = texture2D(uTex, gl_PointCoord).a;
+        gl_FragColor = vec4(vColor * a * vAlpha, 1.0);
+      }`,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+}
+
+export async function createWormViz({ container }) {
+  // ---- static anatomy: the only files this module ever requests ----
   const [graph, layout] = await Promise.all([
     fetch("data/graph.json").then((r) => r.json()),
     fetch("data/layout.json").then((r) => r.json()),
   ]);
   const names = graph.names;
   const nN = graph.nNeurons;
-  const C = graph.consts;
-  // display band for brightness: voltage read against the firing threshold, because
-  // the Q20 floor V_LO is so deep that mapping to it would flatten every node to
-  // nearly full brightness and hide the actual sub-threshold dynamics.
-  const vBand = Math.abs(Number(C.V_THRESH)) || 650117;
-  const scale = Number(C.SCALE) || 1048576;
-  // display gain for the body wave: amplitude stays proportional to the real motor
-  // gate difference, this factor only makes small sub-threshold drive visible.
-  const AMP_GAIN = 4;
+  const eCount = graph.edges.length;
 
-  // name -> contract index, contract index -> anatomy
   const byName = new Map(names.map((nm, i) => [nm, i]));
   const place = new Array(nN).fill(null);
   for (const nb of layout.neurons) {
     const i = byName.get(nb.name);
-    if (i === undefined) continue;
-    place[i] = nb;
+    if (i !== undefined) place[i] = nb;
   }
+
+  // edge endpoints as flat typed arrays, and the inhibitory flag from the real sign
+  const ePre = new Int32Array(eCount);
+  const ePost = new Int32Array(eCount);
+  const wAbs = new Float32Array(eCount);
+  const eInh = new Uint8Array(eCount);
+  let wMax = 1;
+  for (let e = 0; e < eCount; e++) {
+    const [s, d, w] = graph.edges[e];
+    ePre[e] = s;
+    ePost[e] = d;
+    eInh[e] = w < 0 ? 1 : 0;
+    wAbs[e] = Math.abs(w);
+    if (wAbs[e] > wMax) wMax = wAbs[e];
+  }
+  // adjacency, so a pulse that reaches a cell can carry on down that cell's own axon
+  const outEdges = new Map();
+  for (let e = 0; e < eCount; e++) {
+    const s = ePre[e];
+    const list = outEdges.get(s);
+    if (list) list.push(e);
+    else outEdges.set(s, [e]);
+  }
+
+  const rnd = mulberry32(0x5ef1c0);
+  // per-neuron oscillator: a quiet baseline rhythm the pulses ride on top of
+  const oscPhase = new Float32Array(nN);
+  const oscRate = new Float32Array(nN);
+  for (let i = 0; i < nN; i++) {
+    oscPhase[i] = rnd() * TAU;
+    oscRate[i] = 0.08 + rnd() * 0.5;
+  }
+  const drive = new Float32Array(nN);
+  const flash = new Float32Array(nN);
+  const npos = new Float32Array(nN * 3);
 
   // ---- renderer / camera / controls ----
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x050a0e);
-  scene.fog = new THREE.FogExp2(0x050a0e, 0.028);
+  scene.background = new THREE.Color(0x040910);
+  scene.fog = new THREE.FogExp2(0x040910, 0.024);
 
-  const camera = new THREE.PerspectiveCamera(52, 1, 0.1, 400);
-  camera.position.set(6, 4.5, 13);
+  const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 400);
+  camera.position.set(5.4, 4.2, 13.5);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
-  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.12;
   container.appendChild(renderer.domElement);
+
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
   controls.minDistance = 3;
   controls.maxDistance = 60;
+  controls.autoRotate = true;
+  controls.autoRotateSpeed = 0.35;
 
-  scene.add(new THREE.AmbientLight(0x35506a, 1.1));
-  const key = new THREE.DirectionalLight(0xbfefff, 1.5);
+  scene.add(new THREE.AmbientLight(0x35506a, 1.0));
+  const key = new THREE.DirectionalLight(0xbfefff, 1.6);
   key.position.set(6, 10, 8);
   scene.add(key);
-  const rim = new THREE.DirectionalLight(0x38f5b0, 0.8);
+  const rim = new THREE.DirectionalLight(0x38f5b0, 0.85);
   rim.position.set(-8, -4, -6);
   scene.add(rim);
+  const headLamp = new THREE.PointLight(0xffd8a0, 1.2, 9, 2);
+  scene.add(headLamp);
 
-  // ---- body: rebuilt on the CPU so the wave is a real function of the chain gates ----
+  // ---- cuticle: rebuilt on the CPU every frame so it is one continuous membrane,
+  // shaded head -> mid -> tail with faint annular grooves ----
   const bodyGeom = new THREE.BufferGeometry();
-  const verts = SAMPLES * RING;
-  bodyGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(verts * 3), 3));
-  const idx = [];
+  const bodyColor = new Float32Array(SAMPLES * RING * 3);
+  const HEAD = new THREE.Color(0xf2c48c);
+  const MID = new THREE.Color(0x2fa2b6);
+  const TAIL = new THREE.Color(0xd8628c);
+  for (let s = 0; s < SAMPLES; s++) {
+    const t = s / (SAMPLES - 1);
+    const c = HEAD.clone().lerp(MID, Math.min(1, t / 0.34));
+    if (t > 0.34) c.lerp(TAIL, Math.min(1, (t - 0.34) / 0.66));
+    // 21 shallow bands, the cuticle annuli of the animal, kept subtle
+    const band = 0.88 + 0.12 * Math.cos(t * 21 * TAU);
+    for (let k = 0; k < RING; k++) {
+      const i = s * RING + k;
+      bodyColor[i * 3] = c.r * band;
+      bodyColor[i * 3 + 1] = c.g * band;
+      bodyColor[i * 3 + 2] = c.b * band;
+    }
+  }
+  bodyGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(SAMPLES * RING * 3), 3));
+  bodyGeom.setAttribute("color", new THREE.BufferAttribute(bodyColor, 3));
+  const shellIdx = [];
   for (let s = 0; s < SAMPLES - 1; s++) {
     for (let k = 0; k < RING; k++) {
       const a = s * RING + k;
       const b = s * RING + ((k + 1) % RING);
       const c = (s + 1) * RING + k;
       const d = (s + 1) * RING + ((k + 1) % RING);
-      idx.push(a, c, b, b, c, d);
+      shellIdx.push(a, c, b, b, c, d);
     }
   }
-  bodyGeom.setIndex(idx);
-  const bodyMat = new THREE.MeshPhongMaterial({
-    color: 0x14343c, emissive: 0x071b21, specular: 0x9fe8ff, shininess: 26,
-    transparent: true, opacity: 0.42, side: THREE.DoubleSide, depthWrite: false,
+  bodyGeom.setIndex(shellIdx);
+  const bodyMat = new THREE.MeshPhysicalMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.3,
+    roughness: 0.2,
+    metalness: 0,
+    clearcoat: 0.7,
+    clearcoatRoughness: 0.3,
+    emissive: 0x061620,
+    side: THREE.DoubleSide,
+    depthWrite: false,
   });
   const body = new THREE.Mesh(bodyGeom, bodyMat);
   scene.add(body);
 
-  // ---- neurons: one instanced sphere per contract neuron ----
-  const neuronGeom = new THREE.SphereGeometry(1, 12, 10);
-  const neuronMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-  const nodes = new THREE.InstancedMesh(neuronGeom, neuronMat, nN);
-  nodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-  nodes.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(nN * 3), 3);
-  nodes.instanceColor.setUsage(THREE.DynamicDrawUsage);
-  scene.add(nodes);
+  // ---- gut: a second, thinner membrane running inside the same wave ----
+  const gutGeom = new THREE.BufferGeometry();
+  gutGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(G_SAMPLES * G_RING * 3), 3));
+  const gutIdx = [];
+  for (let s = 0; s < G_SAMPLES - 1; s++) {
+    for (let k = 0; k < G_RING; k++) {
+      const a = s * G_RING + k;
+      const b = s * G_RING + ((k + 1) % G_RING);
+      const c = (s + 1) * G_RING + k;
+      const d = (s + 1) * G_RING + ((k + 1) % G_RING);
+      gutIdx.push(a, c, b, b, c, d);
+    }
+  }
+  gutGeom.setIndex(gutIdx);
+  const gutMat = new THREE.MeshStandardMaterial({
+    color: 0x2c2011,
+    emissive: 0xe8a35a,
+    emissiveIntensity: 0.4,
+    transparent: true,
+    opacity: 0.5,
+    roughness: 0.55,
+    depthWrite: false,
+  });
+  const gut = new THREE.Mesh(gutGeom, gutMat);
+  scene.add(gut);
 
-  // ---- synapses: 5144 directed connections, pre -> post ----
-  const eCount = graph.edges.length;
-  const lineGeom = new THREE.BufferGeometry();
-  lineGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(eCount * 6), 3));
-  const lineCol = new THREE.Float32BufferAttribute(new Float32Array(eCount * 6), 3);
-  lineGeom.setAttribute("color", lineCol);
-  const lineMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.22 });
-  const lines = new THREE.LineSegments(lineGeom, lineMat);
-  scene.add(lines);
+  // ---- ventral nerve cord and nerve ring: two lit fibres, drawn from the same frame
+  function lineGeom(n, closed) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    return { geom: g, n, closed };
+  }
+  const lineMat = (hex, op) =>
+    new THREE.LineBasicMaterial({ color: hex, transparent: true, opacity: op, blending: THREE.AdditiveBlending, depthWrite: false });
+
+  const CORD_N = 120;
+  const cord = lineGeom(CORD_N);
+  const cordLine = new THREE.Line(cord.geom, lineMat(0x5fe8d0, 0.5));
+  scene.add(cordLine);
+
+  const RING_N = 40;
+  const ringFibre = lineGeom(RING_N + 1);
+  const ringLine = new THREE.Line(ringFibre.geom, lineMat(0x7ef0ff, 0.55));
+  scene.add(ringLine);
+
+  // ---- synapses: every one of the 5,144 directed connections, additive so dense
+  // regions read as glow rather than as mud; brightness carries the connection weight
+  const synGeom = new THREE.BufferGeometry();
+  synGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(eCount * 6), 3));
+  const synCol = new THREE.Float32BufferAttribute(new Float32Array(eCount * 6), 3);
+  synGeom.setAttribute("color", synCol);
+  const synMat = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.5,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const synapses = new THREE.LineSegments(synGeom, synMat);
+  scene.add(synapses);
 
   const EXC = new THREE.Color(0x2fd8ff);
   const INH = new THREE.Color(0xff5b7f);
   for (let e = 0; e < eCount; e++) {
-    const w = graph.edges[e][2];
-    const col = w < 0 ? INH : EXC;
-    lineCol.setXYZ(e * 2, col.r, col.g, col.b);
-    lineCol.setXYZ(e * 2 + 1, col.r, col.g, col.b);
+    // weak connections fade toward the background instead of disappearing, so the
+    // few heavy synapses stay legible inside a 5,144-edge tangle
+    const b = 0.1 + 0.9 * Math.pow(wAbs[e] / wMax, 0.6);
+    const col = eInh[e] ? INH : EXC;
+    synCol.setXYZ(e * 2, col.r * b, col.g * b, col.b * b);
+    synCol.setXYZ(e * 2 + 1, col.r * b, col.g * b, col.b * b);
   }
-  lineCol.needsUpdate = true;
+  synCol.needsUpdate = true;
 
-  // ---- live state read from chain ----
-  const st = {
-    V: new Float64Array(nN),
-    spikePrev: new Array(nN).fill(0),
-    spikeNow: new Array(nN).fill(0),
-    flash: new Float32Array(nN),
-    gates: {},
-    tick: null,
-    tickAt: 0,
-    tickGap: 0,  // learned heartbeat cadence: EMA of observed tick intervals (ms)
-    connRoot: null,
-    error: null,
-    busy: false,
+  // ---- neuron somata: ellipsoids stretched along the body axis, lit and shaded so
+  // they have volume, with an additive halo on top that grows with activation
+  const neuronGeom = new THREE.IcosahedronGeometry(1, 2);
+  const neuronMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff,
+    roughness: 0.28,
+    metalness: 0.02,
+    clearcoat: 0.8,
+    clearcoatRoughness: 0.25,
+    emissive: 0x0b1a22,
+  });
+  const nodes = new THREE.InstancedMesh(neuronGeom, neuronMat, nN);
+  nodes.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  scene.add(nodes);
+
+  const tex = glowTexture();
+  const haloMat = glowMaterial(tex);
+  const haloGeom = new THREE.BufferGeometry();
+  const haloPos = new Float32Array(nN * 3);
+  const haloCol = new Float32Array(nN * 3);
+  const haloSize = new Float32Array(nN);
+  const haloAlpha = new Float32Array(nN);
+  haloGeom.setAttribute("position", new THREE.BufferAttribute(haloPos, 3));
+  haloGeom.setAttribute("aColor", new THREE.BufferAttribute(haloCol, 3));
+  haloGeom.setAttribute("aSize", new THREE.BufferAttribute(haloSize, 1));
+  haloGeom.setAttribute("aAlpha", new THREE.BufferAttribute(haloAlpha, 1));
+  const halos = new THREE.Points(haloGeom, haloMat);
+  halos.frustumCulled = false;
+  scene.add(halos);
+
+  const baseCol = new Array(nN);
+  for (let i = 0; i < nN; i++) {
+    const nb = place[i];
+    const hex = nb ? (PALETTE[nb.cls] ?? FALLBACK) : FALLBACK;
+    baseCol[i] = new THREE.Color(hex);
+  }
+
+  // ---- travelling pulses: a comet riding a real edge, head glow plus tail segment
+  const pulseGeom = new THREE.BufferGeometry();
+  pulseGeom.setAttribute("position", new THREE.BufferAttribute(new Float32Array(N_PULSE * 6), 3));
+  const pulseCol = new THREE.Float32BufferAttribute(new Float32Array(N_PULSE * 6), 3);
+  pulseGeom.setAttribute("color", pulseCol);
+  const pulseMatl = new THREE.LineBasicMaterial({
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.95,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  const pulseLines = new THREE.LineSegments(pulseGeom, pulseMatl);
+  pulseLines.frustumCulled = false;
+  scene.add(pulseLines);
+
+  const pgGeom = new THREE.BufferGeometry();
+  const pgPos = new Float32Array(N_PULSE * 3);
+  const pgCol = new Float32Array(N_PULSE * 3);
+  const pgSize = new Float32Array(N_PULSE);
+  const pgAlpha = new Float32Array(N_PULSE);
+  pgGeom.setAttribute("position", new THREE.BufferAttribute(pgPos, 3));
+  pgGeom.setAttribute("aColor", new THREE.BufferAttribute(pgCol, 3));
+  pgGeom.setAttribute("aSize", new THREE.BufferAttribute(pgSize, 1));
+  pgGeom.setAttribute("aAlpha", new THREE.BufferAttribute(pgAlpha, 1));
+  const pulseGlow = new THREE.Points(pgGeom, haloMat);
+  pulseGlow.frustumCulled = false;
+  scene.add(pulseGlow);
+
+  const pickWeightedEdge = () => {
+    // bias toward strong synapses so what the viewer shows is the backbone of the
+    // network rather than a uniform lottery over its weakest links
+    for (let tries = 0; tries < 8; tries++) {
+      const e = Math.floor(rnd() * eCount);
+      if (wAbs[e] / wMax > 0.25 || rnd() < 0.1) return e;
+    }
+    return Math.floor(rnd() * eCount);
   };
+  const pulses = [];
+  for (let p = 0; p < N_PULSE; p++) {
+    pulses.push({ e: pickWeightedEdge(), u: rnd(), sp: 0.55 + rnd() * 0.9 });
+  }
 
-  // ---- per-frame geometry write ----
+  // ---- suspended particles, purely set dressing, to give the medium depth
+  const dustGeom = new THREE.BufferGeometry();
+  const dustPos = new Float32Array(N_DUST * 3);
+  for (let i = 0; i < N_DUST; i++) {
+    dustPos[i * 3] = (rnd() - 0.5) * 34;
+    dustPos[i * 3 + 1] = (rnd() - 0.5) * 18;
+    dustPos[i * 3 + 2] = (rnd() - 0.5) * 22;
+  }
+  dustGeom.setAttribute("position", new THREE.BufferAttribute(dustPos, 3));
+  const dustMat = new THREE.PointsMaterial({
+    color: 0x2f6a86,
+    size: 0.055,
+    transparent: true,
+    opacity: 0.55,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const dust = new THREE.Points(dustGeom, dustMat);
+  scene.add(dust);
+
+  // ---- behaviour: a scripted, deterministic sequence of crawl / pause / reversal /
+  // turn episodes, the way the animal's own bout structure looks from outside
+  const EPISODES = [
+    { name: "forward crawl", dir: 1, amp: 0.3, bend: 0.03, tMin: 5, tMax: 11 },
+    { name: "pause", dir: 0, amp: 0.05, bend: 0.08, tMin: 1.5, tMax: 3.5 },
+    { name: "reversal", dir: -1, amp: 0.24, bend: -0.2, tMin: 2.5, tMax: 5 },
+    { name: "turn", dir: 0, amp: 0.12, bend: 0.5, tMin: 2, tMax: 4 },
+    { name: "slow crawl", dir: 1, amp: 0.13, bend: -0.06, tMin: 4, tMax: 9 },
+  ];
+  const W = [0.38, 0.16, 0.16, 0.1, 0.2];
+  const episode = { idx: 0, name: EPISODES[0].name, dir: 1, amp: 0.3, bend: 0.03, left: 0 };
+  function nextEpisode() {
+    let x = rnd();
+    let i = 0;
+    while (i < EPISODES.length - 1 && x > W[i]) {
+      x -= W[i];
+      i++;
+    }
+    const ep = EPISODES[i];
+    episode.idx = i;
+    episode.name = ep.name;
+    episode.dir = ep.dir;
+    // a turn alternates its sign, which is what makes an omega turn look like one
+    episode.bend = i === 3 ? (rnd() < 0.5 ? -1 : 1) * Math.abs(ep.bend) : ep.bend;
+    episode.amp = ep.amp * (0.8 + rnd() * 0.4);
+    episode.left = ep.tMin + rnd() * (ep.tMax - ep.tMin);
+  }
+  nextEpisode();
+
+  // ---- per-frame scene write ----
   const dummy = new THREE.Object3D();
   const colTmp = new THREE.Color();
+  const fr = { x: 0, y: 0, z: 0, ux: 0, uy: 0, r: 1 };
 
-  function waveAt(t, phase, amp) {
-    return amp * Math.sin(TAU * (WAVES * t) - phase);
-  }
-
-  function writeScene(phase, amp, bend) {
+  function writeBody(phase, amp, bend) {
     const pos = bodyGeom.attributes.position;
     for (let s = 0; s < SAMPLES; s++) {
       const t = s / (SAMPLES - 1);
-      const c = spine(t);
-      const up = upAt(t);
-      const r = radiusAt(t);
-      const arch = bend * r * 1.1 * Math.sin(t * Math.PI);
-      const w = waveAt(t, phase, amp * r) + arch;
+      frame(t, phase, amp, bend, fr);
       for (let k = 0; k < RING; k++) {
         const ang = (k / RING) * TAU;
-        const rr = r * (1 + 0.12 * Math.cos(2 * ang));
-        const radial = Math.cos(ang) * rr;
-        const lateral = Math.sin(ang) * rr;
-        const off = w + radial;
+        const rr = fr.r * (1 + 0.13 * Math.cos(2 * ang));
         const i = s * RING + k;
-        pos.setXYZ(i, c.x + up.x * off, c.y + up.y * off, lateral);
+        pos.setXYZ(i, fr.x + fr.ux * Math.cos(ang) * rr, fr.y + fr.uy * Math.cos(ang) * rr, fr.z + Math.sin(ang) * rr);
       }
     }
     pos.needsUpdate = true;
     bodyGeom.computeVertexNormals();
 
-    // neurons ride the same wave
+    const gp = gutGeom.attributes.position;
+    for (let s = 0; s < G_SAMPLES; s++) {
+      const t = 0.06 + (s / (G_SAMPLES - 1)) * 0.78; // the gut runs from pharynx to anus
+      frame(t, phase, amp, bend, fr);
+      const gr = fr.r * 0.42;
+      for (let k = 0; k < G_RING; k++) {
+        const ang = (k / G_RING) * TAU;
+        const i = s * G_RING + k;
+        gp.setXYZ(i, fr.x + fr.ux * Math.cos(ang) * gr, fr.y + fr.uy * Math.cos(ang) * gr - gr * 0.12, fr.z + Math.sin(ang) * gr);
+      }
+    }
+    gp.needsUpdate = true;
+    gutGeom.computeVertexNormals();
+
+    // ventral cord: a single fibre just inside the cuticle on the belly side
+    const cp = cord.geom.attributes.position;
+    for (let i = 0; i < cord.n; i++) {
+      const t = i / (cord.n - 1);
+      frame(t, phase, amp, bend, fr);
+      cp.setXYZ(i, fr.x + fr.ux * fr.r * -0.42, fr.y + fr.uy * fr.r * -0.42, fr.z);
+    }
+    cp.needsUpdate = true;
+
+    // nerve ring: a loop around the body at the pharynx level
+    const rp = ringFibre.geom.attributes.position;
+    const rt = 0.085;
+    frame(rt, phase, amp, bend, fr);
+    for (let i = 0; i <= RING_N; i++) {
+      const ang = (i / RING_N) * TAU;
+      rp.setXYZ(i, fr.x + fr.ux * Math.cos(ang) * fr.r * 0.72, fr.y + fr.uy * Math.cos(ang) * fr.r * 0.72, fr.z + Math.sin(ang) * fr.r * 0.72);
+    }
+    rp.needsUpdate = true;
+  }
+
+  function writeNeurons(time, dt) {
     for (let i = 0; i < nN; i++) {
       const nb = place[i];
       if (!nb) {
@@ -218,213 +547,175 @@ export async function createWormViz({ container, getTarget }) {
         dummy.scale.setScalar(0.0001);
         dummy.updateMatrix();
         nodes.setMatrixAt(i, dummy.matrix);
+        haloAlpha[i] = 0;
         continue;
       }
-      const t = nb.t;
-      const c = spine(t);
-      const up = upAt(t);
-      const r = radiusAt(t);
-      const off = waveAt(t, phase, amp * r) + bend * r * 1.1 * Math.sin(t * Math.PI) + nb.dv * r;
-      dummy.position.set(c.x + up.x * off, c.y + up.y * off, nb.lr * r);
-      const heat = Math.pow(Math.min(1, Math.max(0, (st.V[i] + vBand) / (2 * vBand))), 2);
-      const sz = 0.055 + nb.size * 0.05 + heat * 0.07 + st.flash[i] * 0.16;
-      dummy.scale.setScalar(sz);
+      frame(nb.t, phaseNow, ampShown, bendShown, fr);
+      const px = fr.x + fr.ux * nb.dv * fr.r;
+      const py = fr.y + fr.uy * nb.dv * fr.r;
+      const pz = fr.z + nb.lr * fr.r;
+      npos[i * 3] = px;
+      npos[i * 3 + 1] = py;
+      npos[i * 3 + 2] = pz;
+
+      // synthetic activation: a slow oscillator per cell, the local body strain, and
+      // whatever signal just arrived over a synapse
+      const osc = 0.5 + 0.5 * Math.sin(TAU * oscRate[i] * time + oscPhase[i]);
+      const local = 0.5 + 0.5 * Math.sin(TAU * (WAVES * nb.t) - phaseNow);
+      drive[i] = Math.min(1, 0.1 + 0.32 * osc + 0.22 * local + flash[i] * 0.9);
+      flash[i] = Math.max(0, flash[i] - dt * 1.9);
+
+      const heat = Math.pow(drive[i], 1.8);
+      const sz = 0.05 + (nb.size - 0.7) * 0.06 + heat * 0.055;
+      dummy.position.set(px, py, pz);
+      // soma stretched along the body axis: a cell body with a process, not a bead
+      dummy.scale.set(sz * 1.35, sz, sz * 0.88);
+      dummy.rotation.set(0, 0, 0);
       dummy.updateMatrix();
       nodes.setMatrixAt(i, dummy.matrix);
 
-      const fl = st.flash[i];
-      colTmp.setRGB(
-        0.06 + heat * 0.55 + fl * 0.95,
-        0.42 + heat * 0.5 + fl * 0.95,
-        0.5 + heat * 0.45 + fl * 0.95,
-      );
+      const b = baseCol[i];
+      colTmp.setRGB(b.r, b.g, b.b).multiplyScalar(0.35 + 0.75 * heat);
       nodes.setColorAt(i, colTmp);
+
+      haloPos[i * 3] = px;
+      haloPos[i * 3 + 1] = py;
+      haloPos[i * 3 + 2] = pz;
+      haloCol[i * 3] = b.r;
+      haloCol[i * 3 + 1] = b.g;
+      haloCol[i * 3 + 2] = b.b;
+      haloSize[i] = sz * (2.6 + 5.4 * heat);
+      haloAlpha[i] = 0.16 + 0.72 * heat;
     }
     nodes.instanceMatrix.needsUpdate = true;
     if (nodes.instanceColor) nodes.instanceColor.needsUpdate = true;
+    haloGeom.attributes.position.needsUpdate = true;
+    haloGeom.attributes.aColor.needsUpdate = true;
+    haloGeom.attributes.aSize.needsUpdate = true;
+    haloGeom.attributes.aAlpha.needsUpdate = true;
+  }
 
-    // synapses follow their endpoints
-    const lp = lineGeom.attributes.position;
+  function writeSynapses() {
+    const lp = synGeom.attributes.position;
     for (let e = 0; e < eCount; e++) {
-      const [s, d] = graph.edges[e];
-      const ps = place[s];
-      const pd = place[d];
-      if (!ps || !pd) continue;
-      const cs = spine(ps.t);
-      const us = upAt(ps.t);
-      const rs = radiusAt(ps.t);
-      const ws = waveAt(ps.t, phase, amp * rs);
-      const cd = spine(pd.t);
-      const ud = upAt(pd.t);
-      const rd = radiusAt(pd.t);
-      const wd = waveAt(pd.t, phase, amp * rd);
-      lp.setXYZ(e * 2,
-        cs.x + us.x * (ws + ps.dv * rs), cs.y + us.y * (ws + ps.dv * rs), ps.lr * rs);
-      lp.setXYZ(e * 2 + 1,
-        cd.x + ud.x * (wd + pd.dv * rd), cd.y + ud.y * (wd + pd.dv * rd), pd.lr * rd);
+      const s = ePre[e];
+      const d = ePost[e];
+      lp.setXYZ(e * 2, npos[s * 3], npos[s * 3 + 1], npos[s * 3 + 2]);
+      lp.setXYZ(e * 2 + 1, npos[d * 3], npos[d * 3 + 1], npos[d * 3 + 2]);
     }
     lp.needsUpdate = true;
   }
 
-  // ---- read-only chain access (JSON-RPC batch of eth_call, chunked) ----
-  async function batchEthCall(rpcUrl, brain, calls) {
-    const out = [];
-    for (let i = 0; i < calls.length; i += ETH_CHUNK) {
-      const part = calls.slice(i, i + ETH_CHUNK);
-      const payload = part.map((c, j) => ({
-        jsonrpc: "2.0", id: j, method: "eth_call", params: [{ to: brain, data: c }, "latest"],
-      }));
-      const res = await fetch(rpcUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const arr = await res.json();
-      if (!Array.isArray(arr)) {
-        throw new Error(arr && arr.error && arr.error.message ? arr.error.message : "no batch reply");
+  function writePulses(dt) {
+    const pp = pulseGeom.attributes.position;
+    for (let p = 0; p < N_PULSE; p++) {
+      const pl = pulses[p];
+      pl.u += dt * pl.sp;
+      if (pl.u >= 1) {
+        // the signal has reached the postsynaptic cell: light it up and let it carry
+        // on down that cell's own axon, or fade out if the cell has none
+        const post = ePost[pl.e];
+        flash[post] = Math.min(1.4, flash[post] + 0.9);
+        const onward = outEdges.get(post);
+        if (onward && onward.length && rnd() < 0.78) pl.e = onward[Math.floor(rnd() * onward.length)];
+        else pl.e = pickWeightedEdge();
+        pl.u = 0;
+        pl.sp = 0.55 + rnd() * 0.9;
       }
-      const byId = new Map(arr.map((x) => [x.id, x]));
-      for (let j = 0; j < part.length; j++) {
-        const item = byId.get(j);
-        // a gateway that answers with empty items is unusable for this view: fail it
-        // so the caller rotates to the next endpoint instead of rendering zeros.
-        if (!item || item.error || typeof item.result !== "string") throw new Error("batch not served");
-        out.push(item.result);
-      }
+      const s = ePre[pl.e];
+      const d = ePost[pl.e];
+      const ax = npos[s * 3];
+      const ay = npos[s * 3 + 1];
+      const az = npos[s * 3 + 2];
+      const bx = npos[d * 3];
+      const by = npos[d * 3 + 1];
+      const bz = npos[d * 3 + 2];
+      const tail = Math.max(0, pl.u - 0.22);
+      pp.setXYZ(p * 2, ax + (bx - ax) * tail, ay + (by - ay) * tail, az + (bz - az) * tail);
+      pp.setXYZ(p * 2 + 1, ax + (bx - ax) * pl.u, ay + (by - ay) * pl.u, az + (bz - az) * pl.u);
+
+      const inh = eInh[pl.e] === 1;
+      const bright = 1 - Math.min(1, pl.u) * 0.15;
+      pulseCol.setXYZ(p * 2, inh ? 0.35 * bright : 0.1 * bright, inh ? 0.12 * bright : 0.5 * bright, inh ? 0.2 * bright : 0.75 * bright);
+      pulseCol.setXYZ(p * 2 + 1, inh ? 1.0 : 0.55, inh ? 0.35 : 1.4, inh ? 0.5 : 1.6);
+
+      const hx = ax + (bx - ax) * pl.u;
+      const hy = ay + (by - ay) * pl.u;
+      const hz = az + (bz - az) * pl.u;
+      pgPos[p * 3] = hx;
+      pgPos[p * 3 + 1] = hy;
+      pgPos[p * 3 + 2] = hz;
+      pgCol[p * 3] = inh ? 1.5 : 0.8;
+      pgCol[p * 3 + 1] = inh ? 0.6 : 1.6;
+      pgCol[p * 3 + 2] = inh ? 0.8 : 1.9;
+      pgSize[p] = 0.24;
+      pgAlpha[p] = 0.95;
     }
-    return out;
+    pp.needsUpdate = true;
+    pulseCol.needsUpdate = true;
+    pgGeom.attributes.position.needsUpdate = true;
+    pgGeom.attributes.aColor.needsUpdate = true;
+    pgGeom.attributes.aSize.needsUpdate = true;
+    pgGeom.attributes.aAlpha.needsUpdate = true;
   }
 
-  // remembered endpoint that proved it can serve batches (avoids re-probing each poll)
-  let goodUrl = null;
-
-  // built-in batch-capable fallback: the configured seed list can be narrowed by
-  // a localStorage wbb_rpc override from earlier debugging, and gateways like
-  // bsc-dataseed swallow batches entirely — if nothing configured serves a batch,
-  // try this instead of leaving the viewer stuck reporting an error.
-  const BATCH_FALLBACK = "https://bsc-rpc.publicnode.com";
-
-  // endpoints observed to honour JSON-RPC batches are tried first
-  const BATCH_FIRST = [/publicnode/i, /ankr/i, /llamarpc/i];
-  const batchRank = (u) => { const i = BATCH_FIRST.findIndex((re) => re.test(u)); return i < 0 ? 99 : i; };
-  const orderCandidates = (list) => [...list].sort((a, b) => batchRank(a) - batchRank(b));
-
-  async function refresh() {
-    if (st.busy) return;
-    st.busy = true;
-    try {
-      const { rpcUrls, brain } = getTarget();
-      if (!brain) throw new Error("brain address not resolved yet");
-      const list = orderCandidates((rpcUrls || []).filter(Boolean));
-      if (!list.length) throw new Error("no RPC endpoint configured");
-      const url0 = list[0];
-      // prefer the endpoint that already worked, then try the rest
-      const order = goodUrl ? [goodUrl, ...list.filter((u) => u !== goodUrl)] : list;
-
-      const calls = [];
-      for (let i = 0; i < nN; i++) calls.push(VIZ_IFACE.encodeFunctionData("V", [i]));
-      for (let i = 0; i < nN; i++) calls.push(VIZ_IFACE.encodeFunctionData("spikeCount", [i]));
-      for (const gi of GATE_IDX) calls.push(VIZ_IFACE.encodeFunctionData("gate", [gi]));
-      calls.push(VIZ_IFACE.encodeFunctionData("tick", []));
-      calls.push(VIZ_IFACE.encodeFunctionData("connRoot", []));
-
-      let raw = null;
-      let lastErr = null;
-      for (const url of order) {
-        try {
-          raw = await batchEthCall(url, brain, calls);
-          if (goodUrl !== url) { goodUrl = url; st.probed = url; }
-          break;
-        } catch (e) { lastErr = e; }
-      }
-      if (!raw) {
-        if (url0 !== BATCH_FALLBACK) {
-          try { raw = await batchEthCall(BATCH_FALLBACK, brain, calls); goodUrl = BATCH_FALLBACK; st.probed = BATCH_FALLBACK; lastErr = null; }
-          catch (e) { lastErr = e; }
-        }
-      }
-      if (!raw) throw lastErr || new Error("no endpoint serves batches");
-      const dec = (kind, hex) => VIZ_IFACE.decodeFunctionResult(kind, hex)[0];
-      const prevTick = st.tick;
-
-      for (let i = 0; i < nN; i++) st.V[i] = Number(dec("V", raw[i]));
-      const spikeStart = nN;
-      for (let i = 0; i < nN; i++) st.spikeNow[i] = Number(dec("spikeCount", raw[spikeStart + i]));
-      const gateStart = spikeStart + nN;
-      const g = {};
-      GATE_IDX.forEach((gi, k) => { g[gi] = Number(dec("gate", raw[gateStart + k])) / scale; });
-      st.gates = g;
-      st.tick = Number(dec("tick", raw[gateStart + GATE_IDX.length]));
-      st.connRoot = dec("connRoot", raw[gateStart + GATE_IDX.length + 1]);
-
-      // liveness is the tick actually moving, not the read succeeding: stamp the beat
-      // only on a change, so a stalled chain freezes the body instead of replaying
-      // the last gates forever. A single transient read failure must not freeze an
-      // animal whose tick was demonstrably moving seconds ago, so liveness is the
-      // freshness window alone; the error line below still reports the failure.
-      if (prevTick === null || st.tick !== prevTick) {
-        const now = Date.now();
-        if (prevTick !== null && st.tickAt) {
-          const gap = now - st.tickAt;
-          // EMA: a slow node (adaptive cadence) widens the freshness window, a
-          // stalled one still freezes once 3 learned heartbeats go by
-          st.tickGap = st.tickGap ? Math.round(0.3 * gap + 0.7 * st.tickGap) : gap;
-        }
-        st.tickAt = now;
-      }
-
-      // a spike is a real event: spikeCount only ever grows, so any increase fired
-      // within the observed window and lights up that neuron
-      for (let i = 0; i < nN; i++) {
-        if (st.spikeNow[i] > st.spikePrev[i]) st.flash[i] = 1;
-        st.spikePrev[i] = st.spikeNow[i];
-      }
-      st.tickAt = st.tickAt || Date.now();
-      st.error = null;
-    } catch (e) {
-      st.error = (e && e.message) || String(e);
-    } finally {
-      st.busy = false;
-    }
-  }
-
-  // ---- animation: wave driven only by what the chain actually reports ----
-  let phase = 0;
+  // ---- animation loop: runs as long as the tab is visible, forever ----
+  let phaseNow = 0;
   let ampShown = 0;
   let bendShown = 0;
+  let timeNow = 0;
+  let frames = 0;
   let raf = 0;
+  let running = false;
   let last = performance.now();
 
-  function targetMotion() {
-    const gt = st.gates || {};
-    const fwd = (gt[IDX.AVBL] || 0) + (gt[IDX.AVBR] || 0);
-    const rev = (gt[IDX.AVAL] || 0) + (gt[IDX.AVAR] || 0);
-    const turn = (gt[IDX.AWCL] || 0) + (gt[IDX.AWCR] || 0) - (gt[IDX.AWAL] || 0) - (gt[IDX.AWAR] || 0);
-    const net = fwd - rev;
-    // alive = tick fresh within 3 learned heartbeats, floored at 90s so a fast
-    // cadence never makes the viewer twitchy and a slow one never fakes a stop
-    const aliveWindow = Math.max(90000, 3 * (st.tickGap || 0));
-    const alive = st.tick !== null && Date.now() - st.tickAt < aliveWindow;
-    if (!alive) return { amp: 0, dir: 0, bend: 0, alive: false };
-    const amp = Math.min(0.5, Math.abs(net) * AMP_GAIN);
-    return { amp, dir: net >= 0 ? 1 : -1, bend: Math.max(-0.6, Math.min(0.6, turn * 0.15)), alive: true };
+  function loop(now) {
+    raf = requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    timeNow += dt;
+
+    episode.left -= dt;
+    if (episode.left <= 0) nextEpisode();
+
+    // soft approach to the episode targets, plus a slow breath on the amplitude
+    const k = Math.min(1, dt * 2.2);
+    ampShown += (episode.amp * (0.88 + 0.12 * Math.sin(timeNow * 0.7)) - ampShown) * k;
+    bendShown += (episode.bend - bendShown) * k;
+    phaseNow += dt * episode.dir * (0.9 + ampShown * 3.4);
+
+    writeBody(phaseNow, ampShown, bendShown);
+    writeNeurons(timeNow, dt);
+    // half of the 5,144-edge position write is enough: the synapses are faint, and
+    // skipping alternate frames is what keeps this smooth on integrated graphics
+    if ((frames & 1) === 0) writeSynapses();
+    writePulses(dt);
+
+    frame(0.02, phaseNow, ampShown, bendShown, fr);
+    headLamp.position.set(fr.x, fr.y, fr.z);
+    headLamp.intensity = 0.7 + 0.6 * Math.sin(timeNow * 1.3);
+    dust.rotation.y += dt * 0.012;
+
+    hud();
+    renderer.render(scene, camera);
+    frames++;
   }
 
-  function loop(now) {
-    const dt = Math.min(0.1, (now - last) / 1000);
-    last = now;
-    const m = targetMotion();
-    ampShown += (m.amp - ampShown) * Math.min(1, dt * 3);
-    bendShown += (m.bend - bendShown) * Math.min(1, dt * 3);
-    phase += dt * m.dir * (0.9 + ampShown * 3.5);
-    for (let i = 0; i < nN; i++) if (st.flash[i] > 0) st.flash[i] = Math.max(0, st.flash[i] - dt * 1.6);
-    writeScene(phase, ampShown, bendShown);
-    hud(m);
-    renderer.render(scene, camera);
+  function start() {
+    if (running) return;
+    running = true;
+    last = performance.now();
     raf = requestAnimationFrame(loop);
   }
+  function stopLoop() {
+    running = false;
+    cancelAnimationFrame(raf);
+  }
+  // a background tab should not spend the visitor's battery
+  const onVisibility = () => (document.hidden ? stopLoop() : start());
+  document.addEventListener("visibilitychange", onVisibility);
 
-  // ---- HUD ----
+  // ---- HUD: what is drawn, and explicitly what is invented ----
   const hudEl = document.createElement("div");
   hudEl.className = "viz-hud";
   container.appendChild(hudEl);
@@ -432,26 +723,23 @@ export async function createWormViz({ container, getTarget }) {
   tipEl.className = "viz-tip";
   container.appendChild(tipEl);
 
-  function hud(m) {
-    const tickTxt = st.tick === null ? "—" : String(st.tick);
-    const rootTxt = st.connRoot ? st.connRoot.slice(0, 12) + "…" : "—";
-    const ageS = st.tickAt ? Math.round((Date.now() - st.tickAt) / 1000) : null;
-    const cadS = st.tickGap ? Math.round(st.tickGap / 1000) : null;
-    const paceTxt = ageS === null ? "" : ` · last advance ${ageS}s ago${cadS ? ` (heartbeat ~${cadS}s)` : ""}`;
+  function hud() {
+    if ((frames & 7) !== 0) return; // text every 8th frame: the DOM is the slow part
+    const dirTxt = episode.dir > 0 ? "forward" : episode.dir < 0 ? "reverse" : "no translation";
+    const firing = (() => {
+      let n = 0;
+      for (let i = 0; i < nN; i++) if (flash[i] > 0.25) n++;
+      return n;
+    })();
     hudEl.innerHTML =
-      `<div class="viz-line"><b>tick</b> ${tickTxt} · <b>connRoot</b> ${rootTxt}</div>` +
-      `<div class="viz-line"><b>wave amp</b> ${ampShown.toFixed(3)} · <b>dir</b> ${m.dir > 0 ? "forward (AVB)" : m.dir < 0 ? "reverse (AVA)" : "—"} · <b>turn</b> ${bendShown.toFixed(2)}</div>` +
-      `<div class="viz-line">display gains: wave = |AVB-AVA| gate x${AMP_GAIN} · node brightness = (V in [-V_THRESH,+V_THRESH])^2</div>` +
-      (m.alive
-        ? `<div class="viz-line ok">LIVE${paceTxt} · motor gates read from chain, wave is their function</div>`
-        : `<div class="viz-line halt">HALTED${paceTxt}: the body is frozen, not animated</div>`) +
-      (st.error ? `<div class="viz-line err">chain read failed: ${st.error}</div>` : "") +
-      (st.probed && !st.error
-        ? `<div class="viz-line">batch endpoint ${new URL(st.probed).host} · ${nN * 2 + GATE_IDX.length + 2} eth_call/poll</div>`
-        : "");
+      `<div class="viz-line demo"><b>DEMO</b> — nothing here is read from the chain; the animation runs on its own</div>` +
+      `<div class="viz-line"><b>episode</b> ${episode.name} · <b>wave</b> ${ampShown.toFixed(3)} · ${dirTxt} · <b>bend</b> ${bendShown.toFixed(2)}</div>` +
+      `<div class="viz-line"><b>anatomy</b> ${nN} neurons · ${eCount.toLocaleString("en-US")} directed synapses · real positions</div>` +
+      `<div class="viz-line"><b>signals</b> ${N_PULSE} pulses running pre → post · ${firing} cells lit right now</div>` +
+      `<div class="viz-line">drive, brightness and timing are synthetic — the animal's live state is on card 01</div>`;
   }
 
-  // hover readout: which neuron, its on-chain voltage and spike history
+  // hover readout: which cell, what class, how strongly it is being driven
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
   renderer.domElement.addEventListener("pointermove", (ev) => {
@@ -463,9 +751,10 @@ export async function createWormViz({ container, getTarget }) {
     if (hit.length && hit[0].instanceId !== undefined) {
       const i = hit[0].instanceId;
       const nb = place[i] || {};
-      tipEl.textContent = `${names[i]} · V ${Math.round(st.V[i])} (Q20) · spikes ${st.spikePrev[i]} · t ${nb.t ?? "—"} · ${nb.cls ?? ""}`;
+      tipEl.textContent = `${names[i]} · ${nb.cls ?? "unplaced"} · t ${nb.t ?? "—"} · demo drive ${(drive[i] * 100).toFixed(0)}%`;
       tipEl.style.opacity = "1";
     } else {
+      tipEl.textContent = "";
       tipEl.style.opacity = "0";
     }
   });
@@ -476,30 +765,48 @@ export async function createWormViz({ container, getTarget }) {
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
     renderer.setSize(w, h, false);
+    // world-sized glow points need the device-pixel height and the vertical field of
+    // view folded into one factor, or the halos shrink when the window does
+    const half = (h * renderer.getPixelRatio()) / 2;
+    haloMat.uniforms.uProj.value = half / Math.tan((camera.fov * Math.PI) / 360);
   }
   const ro = new ResizeObserver(resize);
   ro.observe(container);
   resize();
 
-  writeScene(0, 0, 0);
-  raf = requestAnimationFrame(loop);
-  refresh();
-  const timer = setInterval(refresh, POLL_MS);
+  writeBody(0, 0.28, 0.02);
+  writeNeurons(0, 0.016);
+  writeSynapses();
+  writePulses(0.016);
+  start();
 
   return {
-    refresh,
     stop() {
-      cancelAnimationFrame(raf);
-      clearInterval(timer);
+      stopLoop();
+      document.removeEventListener("visibilitychange", onVisibility);
       ro.disconnect();
       controls.dispose();
-      renderer.dispose();
       bodyGeom.dispose();
+      gutGeom.dispose();
+      cord.geom.dispose();
+      ringFibre.geom.dispose();
+      synGeom.dispose();
       neuronGeom.dispose();
-      lineGeom.dispose();
+      haloGeom.dispose();
+      pulseGeom.dispose();
+      pgGeom.dispose();
+      dustGeom.dispose();
       bodyMat.dispose();
+      gutMat.dispose();
+      synMat.dispose();
       neuronMat.dispose();
-      lineMat.dispose();
+      pulseMatl.dispose();
+      haloMat.dispose();
+      dustMat.dispose();
+      cordLine.material.dispose();
+      ringLine.material.dispose();
+      tex.dispose();
+      renderer.dispose();
       hudEl.remove();
       tipEl.remove();
       renderer.domElement.remove();
