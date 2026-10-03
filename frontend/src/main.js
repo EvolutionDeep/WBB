@@ -548,56 +548,44 @@ function renderEvidence() {
     </div>`).join("");
 }
 
-// ---- 3D viewer: lazy-loaded demo, no chain access of any kind ----
-// three.js is code-split and only fetched when the user presses START 3D. The viewer
-// itself is a self-running animation of the connectome's shape: it issues no RPC call
-// at all, so it cannot fail, stall or be fooled, and it cannot imply that the animal is
-// advancing when it is not. Live state belongs to the identity cards, not to this canvas.
+// ---- 3D viewer: an autoplaying demo, no chain access of any kind ----
+// There is no switch to throw: the page imports the chunk itself, at boot and without
+// awaiting it, so three.js comes down alongside the first chain reads instead of in
+// front of them. The viewer is a self-running animation of the connectome's shape: it
+// issues no RPC call at all, so it cannot fail, stall or be fooled, and it cannot imply
+// that the animal is advancing when it is not. Live state belongs to the identity cards,
+// not to this canvas.
 let viz = null;
-let vizBusy = false;
+
+// The one panel the demo can leave behind: what the canvas is doing instead of a canvas.
+// It is handed over with take() because the message stops being a fixed string the
+// moment the demo either arrives or does not.
+function vizPanel(key, params) {
+  const wrap = el("viz-wrap");
+  if (!wrap) return;
+  let d = wrap.querySelector(".viz-off");
+  if (!d) {
+    d = document.createElement("div");
+    d.className = "viz-off";
+    d.id = "viz-off";
+    wrap.appendChild(d);
+  }
+  label(take(d), key, params);
+}
 
 async function startViz() {
-  if (viz || vizBusy) return;
-  vizBusy = true;
-  const btn = el("viz-start");
-  if (btn) label(btn, "c00.btn_loading");
+  if (viz) return;
   try {
     const { createWormViz } = await import("./worm3d.js");
     viz = await createWormViz({ container: el("viz-wrap") });
     const off = el("viz-off");
     if (off) off.remove();
-    if (btn) { label(btn, "c00.btn_running"); btn.classList.add("on"); }
   } catch (e) {
-    if (btn) label(btn, "c00.btn_start");
+    // a decoration that fails to arrive stays a decoration: it says so in one line and
+    // takes nothing else on the page down with it
+    vizPanel("c00.load_fail", { m: (e && e.message) || e });
     console.error("[3d] failed to start", e && e.message ? e.message : e);
-  } finally {
-    vizBusy = false;
   }
-}
-
-function stopViz() {
-  if (!viz) return;
-  viz.stop();
-  viz = null;
-  const btn = el("viz-start");
-  if (btn) { label(btn, "c00.btn_start"); btn.classList.remove("on"); }
-  const wrap = el("viz-wrap");
-  if (wrap && !wrap.querySelector(".viz-off")) {
-    const d = document.createElement("div");
-    d.className = "viz-off";
-    d.id = "viz-off";
-    // tagged like the markup it replaces, so the next language switch finds it the same way
-    d.setAttribute("data-i18n", "c00.stopped");
-    d.textContent = t("c00.stopped");
-    wrap.appendChild(d);
-  }
-}
-
-function wireViz() {
-  const start = el("viz-start");
-  const stop = el("viz-stop");
-  if (start) start.addEventListener("click", startViz);
-  if (stop) stop.addEventListener("click", stopViz);
 }
 
 // The poke module is one of the site's two sanctioned write paths and is
@@ -673,7 +661,8 @@ async function boot() {
   take(el("status-text"));
   setText("rpc-host", seedLabel(RPC_SEEDS[0]));
   renderEvidence();
-  wireViz();
+  // not awaited: the animation is fetched while the first reads are already on their way
+  startViz();
   wirePoke();
   wireReplay();
   wireWall();

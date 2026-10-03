@@ -331,14 +331,20 @@ is reference only.
 
 ### 3D viewer
 
-The dashboard also offers an opt-in **3D connectome viewer** (`src/worm3d.js`,
-Three.js, lazily imported so the base page carries no 3D dependency). Pressing
-START renders the whole animal from the corrected connectome — 302 neurons and
-5144 directed synapses from `public/data/graph.json`, regenerated from the
-authoritative `worm/data/brain_weights.json` by `scripts/gen_frontend_data.py`
-so the picture cannot drift from the deployed `connRoot` — each cell placed by
+The dashboard also carries an **autoplaying 3D connectome viewer** (`src/worm3d.js`,
+Three.js, still its own chunk but imported by the page itself, so the canvas fills in
+without anyone having to press anything). It renders the whole animal from the
+corrected connectome — 302 neurons and 5144 directed synapses from
+`public/data/graph.json`, regenerated from the authoritative
+`worm/data/brain_weights.json` by `scripts/gen_frontend_data.py` so the picture
+cannot drift from the deployed `connRoot` — each cell placed by
 `public/data/layout.json` and coloured by its anatomical group (nerve ring, head
 sensory, motor, cord interneuron, postdeirid, tail).
+
+Nothing gates it and nothing has to be gated: there is no START control and no STOP
+control. The only pause left is the one that spares the visitor's battery — drawing
+stops while the tab is in the background and resumes by itself, which is a cost guard,
+not a control anyone operates.
 
 It is a **demo, and it says so**: the module holds no chain access at all. It
 opens no provider and names no endpoint, requesting nothing beyond those two
@@ -671,8 +677,8 @@ in the browser. By default
 nothing is signed or sent; the two exceptions are both explicitly opt-in and each
 pins one contract and one function — the poke module (`### Poke the worm`) and the
 engraving form behind the wall card (`### The inscription wall on the dashboard`),
-which relay their calls to the visitor's own wallet. The optional Three.js 3D viewer
-is a self-running demo of the connectome's shape and issues no chain read at all, and
+which relay their calls to the visitor's own wallet. The Three.js 3D viewer autoplays
+and is a self-running demo of the connectome's shape, issuing no chain read at all; and
 the time-lapse card (`### Time-lapse`) plays a static
 recording of replayed on-chain state. `npm test` runs a static read-only guardrail
 covering every module except those two, each of which gets a narrower dedicated
@@ -704,9 +710,9 @@ worm/                 off-chain companion code
   node/               resident daemon (advance only, keeps the animal alive)
 scripts/              analysis + layout generation helpers
 frontend/             Vite + ethers read-only dashboard (worker proxy first, free BSC
-                      nodes behind it), opt-in
-                      Three.js 3D viewer (a pure demo, no chain read), opt-in poke, and the
-                      inscription wall (src/wall.js reads, src/engrave.js writes)
+                      nodes behind it), an autoplaying Three.js 3D viewer (a pure demo,
+                      no chain read), opt-in poke, and the inscription wall
+                      (src/wall.js reads, src/engrave.js writes)
 worker/               Cloudflare Worker: read-only chain API + the browser's read proxy
 ```
 

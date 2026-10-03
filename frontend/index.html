@@ -112,7 +112,7 @@
   #dot.bad { background: var(--red); box-shadow: 0 0 8px var(--red); }
   .ro { color: var(--amber); letter-spacing: 0.14em; }
 
-  /* 3D viewer: a self-running demo of the connectome, no chain access */
+  /* 3D viewer: an autoplaying demo of the connectome, no chain access */
   .viz-card { grid-column: 1 / -1; }
   #viz-wrap {
     position: relative; height: 470px; border: 1px solid rgba(53,224,255,0.16);
@@ -207,22 +207,20 @@
 </header>
 
 <div class="grid">
-  <!-- 0. 3D VIEWER (self-running demo of the connectome) -->
+  <!-- 0. 3D VIEWER (autoplaying demo of the connectome, no chain access) -->
   <section class="card viz-card" id="card-viz">
     <h2><span class="num">00</span> · <span data-i18n="c00.title">3D worm — the connectome, animated as a demo</span></h2>
-    <div class="viz-bar">
-      <button id="viz-start" type="button" data-i18n="c00.btn_start">START 3D</button>
-      <button id="viz-stop" type="button" data-i18n="c00.btn_stop">STOP</button>
-      <span class="note" data-i18n="c00.note">
-        a pure visualisation. It loads three.js on demand plus the anatomy from
-        data/graph.json and data/layout.json — 302 neurons at their real positions and the
-        5,144 directed synapses — and then runs forever, crawling, reversing and turning.
-        It sends no request to the chain: the wave, the firing and the pulses along the
-        fibres are invented for the eye. The animal's actual state is on card 01.
-      </span>
+    <div class="note" data-i18n="c00.note">
+      a pure visualisation, and it plays by itself: the page pulls in three.js the moment it
+      opens, alongside the first chain reads, plus the anatomy from data/graph.json and
+      data/layout.json — 302 neurons at their real positions and the 5,144 directed
+      synapses — and then runs forever, crawling, reversing and turning. There is nothing to
+      press. It sends no request to the chain: the wave, the firing and the pulses along the
+      fibres are invented for the eye. The animal's actual state is on card 01. It stops
+      drawing while the tab is in the background and resumes on its own when you come back.
     </div>
     <div id="viz-wrap">
-      <div class="viz-off" id="viz-off" data-i18n="c00.idle">3D demo is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its name and its class.</div>
+      <div class="viz-off" id="viz-off" data-i18n="c00.loading">the 3D demo is loading — three.js is coming down right now. Drag to orbit, scroll to zoom, hover a node for its name and its class.</div>
     </div>
     <div class="viz-legend">
       <span><i style="background:#2fd8ff"></i><span data-i18n="c00.lg_exc">excitatory synapse (pre → post)</span></span>

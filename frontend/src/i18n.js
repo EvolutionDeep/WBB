@@ -41,18 +41,20 @@ export const MESSAGES = {
   // ---- 00 · 3D demo ----
   "c00.title": { en: "3D worm — the connectome, animated as a demo", zh: "3D 线虫 —— 作为演示动画播放的神经连接组" },
   "c00.note": {
-    en: "a pure visualisation. It loads three.js on demand plus the anatomy from data/graph.json and data/layout.json — 302 neurons at their real positions and the 5,144 directed synapses — and then runs forever, crawling, reversing and turning. It sends no request to the chain: the wave, the firing and the pulses along the fibres are invented for the eye. The animal's actual state is on card 01.",
-    zh: "纯粹的可视化。它按需加载 three.js，再从 data/graph.json 与 data/layout.json 读取解剖数据 —— 302 个神经元按真实位置摆放，5,144 条有方向的突触 —— 然后一直跑下去：爬行、倒退、转向。它不向链上发任何请求：波动、放电、沿神经纤维奔跑的脉冲都是为眼睛编造出来的。这只动物的真实状态在 01 号卡片上。",
+    en: "a pure visualisation, and it plays by itself: the page pulls in three.js the moment it opens, alongside the first chain reads, plus the anatomy from data/graph.json and data/layout.json — 302 neurons at their real positions and the 5,144 directed synapses — and then runs forever, crawling, reversing and turning. There is nothing to press. It sends no request to the chain: the wave, the firing and the pulses along the fibres are invented for the eye. The animal's actual state is on card 01. It stops drawing while the tab is in the background and resumes on its own when you come back.",
+    zh: "纯粹的可视化，而且它自己就会播：页面一打开就去取 three.js，与最早那几次链上读取并行，再从 data/graph.json 与 data/layout.json 读取解剖数据 —— 302 个神经元按真实位置摆放，5,144 条有方向的突触 —— 然后一直跑下去：爬行、倒退、转向。没有任何需要按的按钮。它不向链上发任何请求：波动、放电、沿神经纤维奔跑的脉冲都是为眼睛编造出来的。这只动物的真实状态在 01 号卡片上。标签页切到后台时它停止绘制，你回来时它自己续上。",
   },
-  "c00.btn_start": { en: "START 3D", zh: "启动 3D" },
-  "c00.btn_stop": { en: "STOP", zh: "停止" },
+  // the button text is still shared: the wall and the time-lapse cards load their own
+  // modules behind a click and reuse this one word
   "c00.btn_loading": { en: "LOADING…", zh: "加载中…" },
-  "c00.btn_running": { en: "3D RUNNING", zh: "3D 运行中" },
-  "c00.idle": {
-    en: "3D demo is idle — press START 3D. Drag to orbit, scroll to zoom, hover a node for its name and its class.",
-    zh: "3D 演示处于待机 —— 按「启动 3D」。拖动可旋转视角，滚轮可缩放，鼠标停在节点上可看到它的名字与类别。",
+  "c00.loading": {
+    en: "the 3D demo is loading — three.js is coming down right now. Drag to orbit, scroll to zoom, hover a node for its name and its class.",
+    zh: "3D 演示正在加载 —— three.js 此刻正在下载。拖动可旋转视角，滚轮可缩放，鼠标停在节点上可看到它的名字与类别。",
   },
-  "c00.stopped": { en: "3D demo stopped. Press START 3D to resume.", zh: "3D 演示已停止。按「启动 3D」继续。" },
+  "c00.load_fail": {
+    en: "the 3D demo could not load ({m}). Nothing else on this page depends on it.",
+    zh: "3D 演示加载失败（{m}）。页面上没有别的东西依赖它。",
+  },
   "c00.lg_exc": { en: "excitatory synapse (pre → post)", zh: "兴奋性突触（前 → 后）" },
   "c00.lg_inh": { en: "inhibitory synapse (pre → post)", zh: "抑制性突触（前 → 后）" },
   "c00.lg_ring": { en: "nerve ring", zh: "神经环" },
@@ -412,8 +414,9 @@ export function applyStatic(scope) {
 // ---- labels written by script ----
 // An element whose text a module overwrites must NOT carry data-i18n, or switching
 // language would repaint the default label over the live state ("LOADING…" would go
-// back to "START 3D"). Those elements are labelled through label(), which remembers the
-// key on the node, and a language switch repaints every remembered key in place.
+// back to the word it had before). Those elements are labelled through label(), which
+// remembers the key on the node, and a language switch repaints every remembered key in
+// place.
 export const LABEL_KEY = "labelKey";
 const LABEL_PARAMS_KEY = "labelParams";
 const labelAttr = (k) => `data-${k.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase())}`;

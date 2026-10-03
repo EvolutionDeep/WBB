@@ -243,7 +243,25 @@ has(
   "3D demo draws the pharynx bulb on its own pumping clock",
 );
 absent(viz, "HALTED", "3D demo no longer claims to report chain liveness");
-absent(readFileSync(join(root, "src", "main.js"), "utf8"), "getTarget", "the demo is handed no chain target");
+absent(main, "getTarget", "the demo is handed no chain target");
+// ---- the demo plays by itself ----
+// A visitor who has to find a button before the animation exists is a visitor who never
+// sees the animation, and the gate cost three things: the click, the idle panel telling
+// them to click, and a STOP that could strand the canvas on a screen nobody asked for.
+// Autoplay removes all three, so the guard is that nothing is left to click.
+has(
+  main.includes('await import("./worm3d.js")') && /boot\(\)[\s\S]*startViz\(\);/.test(main),
+  "the 3D chunk is imported by the page itself on boot",
+);
+has(
+  !main.includes('"viz-start"') && !main.includes('"viz-stop"') && !main.includes("stopViz"),
+  "no start/stop handler survives in the page logic",
+);
+has(
+  !replayHtml.includes("viz-start") && !replayHtml.includes("viz-stop") &&
+    replayHtml.includes('data-i18n="c00.loading"'),
+  "the viewer markup carries no buttons, only the panel shown while the chunk arrives",
+);
 
 const graph = JSON.parse(readFileSync(join(root, "public", "data", "graph.json"), "utf8"));
 const layout = JSON.parse(readFileSync(join(root, "public", "data", "layout.json"), "utf8"));
