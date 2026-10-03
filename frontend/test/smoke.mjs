@@ -68,11 +68,19 @@ has(main.includes('import("./poke.js")'), "poke loads lazily via dynamic import 
 // above (that is the point of splitting it from the engraver); these assertions
 // cover the parts a pure text scan of the whole bundle cannot prove.
 const wallSrc = readFileSync(join(root, "src", "wall.js"), "utf8");
-const LEDGER_ADDR = "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966";
+const LEDGER_ADDR = "0x16a4d26C90fE7613f22Da41150E4847e1fE47495";
+const OLD_LEDGER_ADDR = "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966";
 const TAX_ADDR = "0xA18f90eF3d4cc543141986c80442F87a2d2a7777";
 has(wallSrc.includes(LEDGER_ADDR), "wall reads the pinned WormLedger");
-has(wallSrc.includes("125402131"), "wall pins the ledger deployment block as the scan floor");
+has(wallSrc.includes("125412554"), "wall pins the ledger deployment block as the scan floor");
 has(wallSrc.includes(TAX_ADDR), "wall pins the token the ledger is paid in");
+// the superseded 1-token wall must not survive in the reading module: an address
+// left behind in the code is one someone could later read as the live wall
+absent(wallSrc, OLD_LEDGER_ADDR, "wall no longer reads the superseded 1-token ledger");
+// the event cache is keyed on the ledger, so re-pointing the wall cannot inherit
+// the previous wall's cached scan floor and skip its earliest inscriptions
+has(/CACHE_KEY = `wbb_wall_\$\{LEDGER\.toLowerCase\(\)\}`/.test(wallSrc),
+  "the wall's cache key is derived from the ledger address, not a hand-bumped counter");
 has(wallSrc.includes('not the token this page pins'), "wall refuses to quote a price if the ledger's token differs");
 // a permanent on-chain string is untrusted input: it must be escaped, never spliced
 has(/const esc = /.test(wallSrc) && wallSrc.includes("esc(e.text)"), "engraved text is HTML-escaped before rendering");
@@ -88,6 +96,11 @@ has(main.includes('import("./wall.js")'), "wall loads lazily via dynamic import 
 const engrave = readFileSync(join(root, "src", "engrave.js"), "utf8");
 has(engrave.includes(LEDGER_ADDR), "engrave targets the pinned WormLedger");
 has(engrave.includes(TAX_ADDR), "engrave pins the token it approves");
+absent(engrave, OLD_LEDGER_ADDR, "engrave no longer targets the superseded 1-token ledger");
+// the spending module refuses to mount unless the reading module's pins agree with
+// its own, so a one-sided address change cannot produce a form at all
+has(engrave.includes("a ledger it does not pin") && engrave.includes("a token it does not pin"),
+  "engrave cross-checks the wall's addresses against its own pins");
 const engraveAddrs = [...engrave.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase());
 const ENGRAVE_OK = new Set([LEDGER_ADDR.toLowerCase(), TAX_ADDR.toLowerCase()]);
 has(engraveAddrs.length > 0 && engraveAddrs.every((a) => ENGRAVE_OK.has(a)) && new Set(engraveAddrs).size === 2,
@@ -137,7 +150,11 @@ for (const bad of ["sendTransaction", "getSigner", "window.ethereum", "privateke
 const replayHtml = readFileSync(join(root, "index.html"), "utf8");
 has(replayHtml.includes("card-replay"), "time-lapse card present on the dashboard");
 has(replayHtml.includes('id="card-wall"') && replayHtml.includes('<span class="num">05</span>'), "inscription wall card is numbered 05 on the dashboard");
-has(replayHtml.includes(LEDGER_ADDR), "the page prints the ledger address the wall card reads");
+// the prose in the page must name the wall the modules actually read, and tell the
+// visitor the old one still exists at its own immutable price
+has(replayHtml.includes(LEDGER_ADDR), "the page names the live ledger the wall modules read");
+has(replayHtml.includes(OLD_LEDGER_ADDR) && replayHtml.includes("superseded"), "the page discloses the superseded 1-token wall");
+absent(replayHtml, "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3", "the wall card names no brain address: the ledger is the only entry point");
 {
   // every element id the two wall modules touches must exist in the shipped HTML,
   // or the card would silently half-render against a null node

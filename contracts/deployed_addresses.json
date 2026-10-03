@@ -55,12 +55,12 @@
     "note": "V2 seeded from the pre-fix (direction-reversed) genome; superseded by the corrected genesis below. Left running/immutable, not touched."
   },
   "WormLedger": {
-    "address": "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966",
+    "address": "0x16a4d26C90fE7613f22Da41150E4847e1fE47495",
     "brain": "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3",
     "token": "0xa18f90ef3d4cc543141986c80442f87a2d2a7777",
-    "ticksPerSlot": "10",
-    "price": "1000000000000000000",
-    "deployedAtBlock": "125402140"
+    "ticksPerSlot": "100",
+    "price": "10000000000000000000000",
+    "deployedAtBlock": "125412554"
   },
   "WormGuess": {
     "address": "0x8d3c1e2fED66aAB5293d0FC8983988Df15e6353b",
@@ -68,5 +68,18 @@
     "token": "0xa18f90ef3d4cc543141986c80442f87a2d2a7777",
     "minStake": "1000000000000000000",
     "deployedAtBlock": "125402140"
-  }
+  },
+  "WormLedgerSuperseded": [
+    {
+      "address": "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966",
+      "brain": "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3",
+      "token": "0xa18f90ef3d4cc543141986c80442f87a2d2a7777",
+      "ticksPerSlot": "10",
+      "price": "1000000000000000000",
+      "deployedAtBlock": "125402131",
+      "deployedAtBlockNote": "the old script recorded the block its run finished in (125402140); 125402131 is the receipt block from that deployment log",
+      "supersededAtBlock": "125412554",
+      "why": "price and ticksPerSlot are immutable; a re-price is a new deployment. This address stays live and sellable at 1 token per slot forever; nothing points at it any more"
+    }
+  ]
 }

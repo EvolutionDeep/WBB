@@ -462,15 +462,26 @@ reads `tick()`/`stateHash()` before and after and aborts if its own deployment m
 the animal.
 
 **Both are live on BSC mainnet**, wired to the running worm and to the `0xa18f…`
-token, with the parameters frozen as deployed — one inscription per 10 ticks at 1.0
+token, with the parameters frozen as deployed — one inscription per 100 ticks at 10,000
 token arriving net of tax, and a 1.0 token minimum stake:
 
 | contract | address | deployed block |
 | --- | --- | --- |
-| `WormLedger` | `0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966` | 125402131 |
+| `WormLedger` | `0x16a4d26C90fE7613f22Da41150E4847e1fE47495` | 125412554 |
 | `WormGuess` | `0x8d3c1e2fED66aAB5293d0FC8983988Df15e6353b` | 125402137 |
 
-The two transactions cost 1,004,455 and 1,219,279 gas (0.00011 BNB together), and
+`ticksPerSlot` and `price` are `immutable`, so repricing the wall meant a second
+deployment rather than a setting. The first wall,
+`0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966` (10 ticks per slot, 1.0 token per
+inscription), is **superseded, not retired**: it carries zero inscriptions and nothing
+in this repo points at it any more, but it is unowned and immutable, so it stays
+buyable at one token per slot for as long as BSC runs, and anyone who finds that
+address may engrave there. The wall this project advertises is the 10,000-token one
+above; `contracts/deployed_addresses.json` keeps both records, under `WormLedger` and
+`WormLedgerSuperseded`.
+
+The two transactions cost 1,004,455 and 1,219,279 gas (0.00011 BNB together), the
+replacement ledger 1,004,479, and
 `tick()`/`stateHash()` were identical before and after: the deployments did not touch
 the animal. `npx hardhat test` covers both suites (23 cases, all local).
 
@@ -497,8 +508,11 @@ read feed and its single write in one fenced file:
 - `frontend/src/wall.js` — **read-only, and still inside the global ban.** One batched
   `eth_call` for the seven getters, one 24-call batch for the visible slots, and an
   `Inscribed` event walk that starts at the pinned deployment block
-  (`125402131`) and advances in 2,000-block spans cached in `localStorage`, so a
-  visitor who keeps the tab open keeps syncing instead of re-reading from genesis.
+  (`125412554`) and advances in 2,000-block spans cached in `localStorage` under a key
+  derived from the ledger address itself, so re-pointing the page at a different wall
+  can never inherit the old wall's cached scan floor and quietly skip the earliest
+  inscriptions. A visitor who keeps the tab open keeps syncing instead of re-reading
+  from genesis.
   The cached event rows are capped at the newest 2,000 — an unbounded cache would
   eventually exceed the storage quota, fail its `setItem` into a silent catch, and
   send every visit back to genesis with no way to reach the head inside its budget.
@@ -513,11 +527,14 @@ read feed and its single write in one fenced file:
   pinned ledger and its pinned token. It never names the brain, so nothing on the
   wall can move or stimulate the animal; it never sees a key, since signing happens
   in the visitor's own wallet. Because the price is defined as what *arrives* and the
-  token keeps 3%, the form prefills `price / 0.97` plus a 2% margin — the displayed
-  contract floor (1.0309) is the bare minimum, and the extra exists because I cannot
-  know how the deployed token rounds its own fee and a reverted inscription still
-  costs gas. Text policy, slot window and nominal are all checked client-side first so
-  a mistake costs a keystroke instead of a fee.
+  token keeps 3%, the form prefills `price / 0.97` plus a 2% margin: on the live wall
+  that is a contract floor of 10,309.28 against a 10,000 price, and a prefilled
+  10,515.46. The extra exists because I cannot know how the deployed token rounds its
+  own fee and a reverted inscription still costs gas. The module also refuses to mount
+  at all unless the addresses the read side hands it equal the two it pins itself, so a
+  one-sided address change cannot produce a spending form. Text policy, slot window and
+  nominal are all checked client-side first so a mistake costs a keystroke instead of a
+  fee.
 
 `frontend/test/smoke.mjs` fences both halves: `wall.js` stays under the site-wide ban
 on `getSigner` / `sendTransaction` / `window.ethereum` / key material, while
@@ -528,25 +545,34 @@ the two pinned identifiers, and no module may reach it through a static import.
 
 What I verified after deploying, rather than assuming:
 
-- **Live page, real browser.** Pressing READ THE WALL filled the card from chain
-  state: `wall read`, price `1.0000 WormBrain (must arrive)`, contract floor
-  `1.0309`, newest slot `93 (brain tick 937)`, `0 engraved`, log coverage "all
-  history, through block 125408500", 24 tiles all `open`, and no console errors. Its
-  64 JSON-RPC requests spread over publicnode and the dataseeds and all returned 200.
-- **The write encoding, without spending.** `inscribe` carries selector `0x9b882837`
-  and the live contract accepted it far enough to prove the frontend's ordering: a
-  static `eth_call` for a legal slot at exactly the floor passed every check the ledger
-  makes itself and failed only inside the token, at `"ERC20: insufficient allowance"`;
-  below the floor it answered `"nominal below price"`, and one slot ahead `"slot is in
-  the future"`. That is the contract confirming the frontend's ordering and arithmetic,
-  not my test agreeing with my code.
+- **Live page, real browser.** A fresh load of card 05, pressed READ THE WALL: `wall read ·
+  11:44:51`, price `10000.0000 WormBrain (must arrive)`, contract floor `10309.2783`, slot
+  span "100 ticks of beating (about 100 minutes at the observed ~1 tick/min cadence)",
+  newest slot `9 (brain tick 970)`, `0 engraved`, log coverage "all history, through block
+  125414581". Ten tiles rendered (slot 9 down to slot 0 — the wall is young, so fewer than
+  24 exist yet), all of them `open`. Zero console messages of any kind, and every RPC
+  response returned 2xx.
+- **The form, armed but not fired.** ENABLE ENGRAVING mounted it and prefilled slot `9`
+  (min 0, max 9) with nominal `10515.463917525773195877`. I had computed that exact number
+  independently, straight from the on-chain `price()` with the same ceiling arithmetic, and
+  it agrees to the last wei. Nothing was signed: no wallet prompt appeared and no
+  transaction left the page.
+- **The write encoding, without spending.** `inscribe` carries selector `0x9b882837`. A
+  static `eth_call` from a wallet holding no token passed every check the ledger makes on
+  its own — slot window, `nominal >= price`, text policy — and failed only inside the
+  token, at `"ERC20: insufficient allowance"`, at four different nominals (price, floor −
+  1 wei, floor, and the form's value); one slot ahead it answered `"slot is in the
+  future"`. What that cannot prove is the arrival check: the ledger inspects the balance
+  delta *after* the transfer, so an unapproved wallet never reaches it. That limit is the
+  reason the form prefills above the floor rather than at it — a shortfall reverts on
+  chain and still costs gas.
 - **Bundle shape.** The deployed entry chunk contains neither the ledger address nor
   `window.ethereum` nor `inscribe(`; those live only in the lazily fetched
   `wall-*.js` and `engrave-*.js` chunks, so the default page genuinely cannot spend.
 
 No inscription has been made yet: the wall is empty, and the first one costs its
-author ~1.05 token plus two transactions of gas. I have not spent any of your token
-on this — arming the form and pressing ENGRAVE is yours to do.
+author ~10,515.46 token plus two transactions of gas. I have not spent any of your
+token on this — arming the form and pressing ENSCRIBE is yours to do.
 
 ```powershell
 cd frontend; npm test; npm run build      # fence + Vite build into frontend/dist

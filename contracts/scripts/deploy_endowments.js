@@ -15,9 +15,15 @@
 ///   node scripts/deploy_endowments.js --on testnet             # 97, mock token
 ///   node scripts/deploy_endowments.js --on testnet --token 0x.. # 97, own token
 ///   node scripts/deploy_endowments.js --on mainnet --i-authorize-mainnet
+///   node scripts/deploy_endowments.js --only ledger ...        # one endowment only
 ///
 /// Knobs (all in token units, 18 decimals):
 ///   TOKEN  TICKS_PER_SLOT  PRICE  MIN_STAKE
+/// `price` and `ticksPerSlot` are `immutable` on the ledger and `minStake` is
+/// immutable on the guess, so changing a parameter means deploying again. The
+/// previous mainnet record is then kept under `WormLedgerSuperseded` rather than
+/// overwritten: an abandoned wall is still on-chain and still sellable at its old
+/// price, and a record that hid that would be lying about the supply of walls.
 /// The private key is only read from contracts/.env and never printed.
 const fs = require("fs");
 const path = require("path");
@@ -43,8 +49,13 @@ function loadArtifact(name) {
 function parseArgs() {
   const a = process.argv.slice(2);
   const on = a.includes("--on") ? a[a.indexOf("--on") + 1] : "plan";
+  const only = a.includes("--only") ? a[a.indexOf("--only") + 1] : null;
+  if (only !== null && !["ledger", "guess"].includes(only)) {
+    throw new Error(`--only must be ledger or guess (got ${only})`);
+  }
   return {
     on: on === "plan" ? null : on,
+    only,
     authorizeMainnet: a.includes("--i-authorize-mainnet"),
     token: process.env.TOKEN || null,
     ticksPerSlot: BigInt(process.env.TICKS_PER_SLOT || "10"),
@@ -72,6 +83,7 @@ async function main() {
 
   console.log("plan:", JSON.stringify({
     on: cfg.on || "plan only (no transaction will be sent)",
+    only: cfg.only || "both endowments",
     ticksPerSlot: cfg.ticksPerSlot.toString(),
     price: ethers.formatEther(cfg.price),
     minStake: ethers.formatEther(cfg.minStake),
@@ -113,19 +125,25 @@ async function main() {
     console.log("token:", tokenAddr);
   }
 
-  // ---- the two endowments ----
-  const ledger = await deploy("WormLedger", wallet, [brainAddr, tokenAddr, cfg.ticksPerSlot, cfg.price]);
-  const guess = await deploy("WormGuess", wallet, [brainAddr, tokenAddr, cfg.minStake]);
+  // ---- the two endowments, either of which may be skipped by --only ----
+  const wantLedger = !cfg.only || cfg.only === "ledger";
+  const wantGuess = !cfg.only || cfg.only === "guess";
+  const ledger = wantLedger ? await deploy("WormLedger", wallet, [brainAddr, tokenAddr, cfg.ticksPerSlot, cfg.price]) : null;
+  const guess = wantGuess ? await deploy("WormGuess", wallet, [brainAddr, tokenAddr, cfg.minStake]) : null;
 
   // ---- read-back: what the contracts think the animal is, and what they cannot do ----
   const [tick1, hash1] = await Promise.all([brain.tick(), brain.stateHash()]);
   if (tick1 !== tick0 || hash1 !== hash0) {
     throw new Error(`deployment changed the brain: tick ${tick0}->${tick1}. That must never happen.`);
   }
-  const slot = await ledger.contract.currentSlot();
-  const maxFired = await guess.contract.MAX_FIRED();
-  console.log(`read-back: ledger slot ${slot} (tick ${tick1} / ${cfg.ticksPerSlot}), guess ceiling ${maxFired} neurons`);
+  const slot = ledger ? await ledger.contract.currentSlot() : null;
+  const maxFired = guess ? await guess.contract.MAX_FIRED() : null;
+  const parts = [];
+  if (ledger) parts.push(`ledger slot ${slot} (tick ${tick1} / ${cfg.ticksPerSlot})`);
+  if (guess) parts.push(`guess ceiling ${maxFired} neurons`);
+  console.log("read-back: " + parts.join(", "));
   for (const [name, c] of [["WormLedger", ledger], ["WormGuess", guess]]) {
+    if (!c) continue;
     for (const forbidden of ["owner", "pause", "upgrade", "withdraw", "mint", "advance", "stimulate"]) {
       if (c.contract.interface.getFunction(forbidden, { strict: false })) {
         throw new Error(`${name} exposes ${forbidden}: an endowment must not be able to touch the animal or the funds`);
@@ -140,18 +158,30 @@ async function main() {
   const base = { brain: brainAddr, token: tokenAddr };
   const ledgerRecord = { ...base, ticksPerSlot: cfg.ticksPerSlot.toString(), price: cfg.price.toString() };
   const guessRecord = { ...base, minStake: cfg.minStake.toString() };
-  const deployedAtBlock = (await provider.getBlockNumber()).toString();
+  // each contract's own receipt block, not the block the run happened to finish in:
+  // a reader uses this number as the floor for scanning `Inscribed` events, and a floor
+  // a few blocks late silently drops the earliest inscriptions.
   if (cfg.on === "mainnet") {
-    rec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock };
-    rec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock };
+    if (ledger) {
+      if (rec.WormLedger) {
+        // the abandoned wall keeps selling at its own immutable price, so the record
+        // has to say so instead of pretending there was only ever one
+        rec.WormLedgerSuperseded = [
+          ...(rec.WormLedgerSuperseded || []),
+          { ...rec.WormLedger, supersededAtBlock: ledger.blockNumber, why: "price and ticksPerSlot are immutable; a re-price is a new deployment" },
+        ];
+      }
+      rec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock: String(ledger.blockNumber) };
+    }
+    if (guess) rec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock: String(guess.blockNumber) };
     fs.writeFileSync(recPath, JSON.stringify(rec, null, 2) + "\n");
-    console.log("\ndeployed_addresses.json updated (WormLedger + WormGuess).");
+    console.log("\ndeployed_addresses.json updated (" + [ledger && "WormLedger", guess && "WormGuess"].filter(Boolean).join(" + ") + ").");
   } else {
     const tPath = path.join(__dirname, "..", "deployed_addresses.testnet.json");
     const trec = fs.existsSync(tPath) ? JSON.parse(fs.readFileSync(tPath, "utf-8")) : {};
     trec.chainId = Number(CHAINS.testnet);
-    trec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock };
-    trec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock };
+    if (ledger) trec.WormLedger = { address: ledger.address, ...ledgerRecord, deployedAtBlock: String(ledger.blockNumber) };
+    if (guess) trec.WormGuess = { address: guess.address, ...guessRecord, deployedAtBlock: String(guess.blockNumber) };
     if (mock) trec.MockTaxToken = { address: mock.address };
     fs.writeFileSync(tPath, JSON.stringify(trec, null, 2) + "\n");
     console.log("\ndeployed_addresses.testnet.json updated (mainnet record untouched).");

@@ -26,7 +26,7 @@
  */
 import { BrowserProvider, Contract, formatEther, formatUnits, parseUnits } from "ethers";
 
-export const LEDGER = "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966";
+export const LEDGER = "0x16a4d26C90fE7613f22Da41150E4847e1fE47495";
 export const TOKEN = "0xA18f90eF3d4cc543141986c80442F87a2d2a7777";
 
 const LEDGER_ABI = [
@@ -179,8 +179,14 @@ async function send() {
  */
 export async function mount(where) {
   ctx = where;
-  if (where.ledger !== LEDGER || where.token !== TOKEN) {
-    throw new Error("the wall handed this module an address it does not pin");
+  // compared case-insensitively so a checksummed and a lowercase spelling of the
+  // same contract cannot disagree: this module spends real tokens, so it would
+  // rather refuse to appear than write to a ledger it did not pick itself
+  if (String(where.ledger).toLowerCase() !== LEDGER.toLowerCase()) {
+    throw new Error("the wall handed this module a ledger it does not pin");
+  }
+  if (String(where.token).toLowerCase() !== TOKEN.toLowerCase()) {
+    throw new Error("the wall handed this module a token it does not pin");
   }
   const f = typeof where.facts === "function" ? where.facts() : null;
   const slotEl = el("wall-slot"), textEl = el("wall-text"), nominalEl = el("wall-nominal"), preview = el("wall-preview");

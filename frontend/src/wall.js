@@ -25,8 +25,8 @@
 import { Interface } from "ethers";
 
 /// the ledger, and the block it was deployed in: the left edge of any honest scan
-export const LEDGER = "0xb305bDcf97C26B1312E3C3b3158BAAc7cD5f6966";
-export const LEDGER_BLOCK = 125402131;
+export const LEDGER = "0x16a4d26C90fE7613f22Da41150E4847e1fE47495";
+export const LEDGER_BLOCK = 125412554;
 /// the tax token inscriptions are paid and burned in
 export const TOKEN = "0xA18f90eF3d4cc543141986c80442F87a2d2a7777";
 
@@ -56,7 +56,10 @@ const CHUNK = 2000;      // blocks per getLogs span, inside public log limits
 const SPANS = 6;         // spans walked per refresh: the cache carries the rest
 const TILES = 24;        // slots rendered as wall tiles
 const REFRESH_MS = 45000;
-const CACHE_KEY = "wbb_wall_v1";
+// keyed by the ledger itself, because the event history in it belongs to one
+// deployment: a hand-bumped counter would let a re-priced wall inherit the old
+// wall's cached scan floor and quietly skip its earliest inscriptions.
+const CACHE_KEY = `wbb_wall_${LEDGER.toLowerCase()}`;
 
 const wall = new Interface(WALL_ABI);
 const erc20 = new Interface(TOKEN_ABI);
