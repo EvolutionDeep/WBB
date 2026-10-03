@@ -23,6 +23,16 @@ Usage:
   on-chain state + this node's own event logs to the Cloudflare Worker each
   beat (needs DAEMON_KEY in .env or --api-key), so the frontend poll path costs
   zero extra RPC. Those pushes are read-only feeds; nothing is enqueued here.
+
+Gateway choice: when contracts/.env carries ALCHEMY_BSC_RPC, every write and
+scalar read goes through it first -- it answers eth_call reliably where the free
+dataseeds silently drop batch members and refuse eth_getLogs outright -- with the
+free gateways kept as the retry pool, so a metered hiccup degrades a read rather
+than stopping the heart. The one deliberate exception is the per-beat full-state
+sweep: 1,217 individual eth_calls, about 121,700 compute units at 100 CU each, so
+a 60-second heartbeat would bill roughly 7.3M CU an hour and spend a whole month
+of allowance inside four hours. That sweep therefore stays on the free gateways
+unless --metered-state opts it in; --free-only ignores the metered gateway at all.
 """
 import argparse
 import json
@@ -50,7 +60,6 @@ BRAIN_ABI = ROOT / "contracts" / "artifacts" / "contracts" / "WormBrainV2.sol" /
 BRAIN_ABI_MIN = HERE / "brain_abi.json"
 WEIGHTS = ROOT / "worm" / "data" / "brain_weights.json"
 
-RPC = "https://bsc-dataseed1.bnbchain.org"
 N_NEURONS = 302
 Q = 1 << 20  # SCALE, matches brain_spec
 # BSC rejects any tx whose gas limit exceeds 2**24; a V2 advance(1) costs ~14.2M
@@ -107,16 +116,56 @@ def push_events(args, tag):
         print(f"[push] events {tag} n={len(evs)} -> HTTP {r.status_code}")
     except Exception as e:
         EVBUF[:0] = evs  # keep them for the next beat's retry
-        print(f"[push] events {tag} failed: {e}", file=sys.stderr)
+        print(f"[push] events {tag} failed: {scrub(e)}", file=sys.stderr)
 
 
 # public dataseeds rate-limit eth_call inside big batches: rotate endpoints
 # per chunk, throttle between chunks, back off and retry on limit errors
-RPC_LIST = [
+FREE_RPCS = [
     "https://bsc-dataseed1.bnbchain.org",
     "https://bsc-dataseed.binance.org",
     "https://bsc-dataseed1.defibit.io",
 ]
+# Gateway order for the two read loops, rebuilt in main() once .env is loaded so
+# a metered key in the environment takes priority without editing any code.
+GW = list(FREE_RPCS)          # writes, balance, tick: a handful of calls per beat
+GW_STATE = list(FREE_RPCS)    # the full-state sweep: the expensive loop
+SECRETS = []                  # URL substrings that must never reach stdout/stderr
+
+
+def endpoint(pool, i, attempt):
+    """Preferred gateway first, the rest of the pool rotated across retries."""
+    if attempt == 0 or len(pool) == 1:
+        return pool[0]
+    return pool[1 + (i + attempt) % (len(pool) - 1)]
+
+
+def scrub(text):
+    """Strip a metered URL from any message.
+
+    HTTP/RPC exceptions quote the endpoint they used, and a metered BSC URL carries
+    its key in the path -- so every failure print goes through here first.
+    """
+    out = str(text)
+    for secret in SECRETS:
+        out = out.replace(secret, "***")
+    return out
+
+
+def select_gateways(metered, free_only=False, metered_state=False):
+    """Gateway order for the two read loops.
+
+    The metered endpoint leads for writes and cheap scalar reads, where its
+    reliability is worth far more than its compute units. The full-state sweep is
+    the loop that would eat a monthly allowance (1,217 calls per beat), so it only
+    joins the metered pool when the operator opts in explicitly.
+    """
+    gw, gw_state = list(FREE_RPCS), list(FREE_RPCS)
+    if metered and not free_only:
+        gw.insert(0, metered)
+        if metered_state:
+            gw_state.insert(0, metered)
+    return gw, gw_state
 
 
 def read_full_state(brain, w3):
@@ -139,7 +188,7 @@ def read_full_state(brain, w3):
         # public dataseeds forbid big eth_call batches; concurrent singles
         # rotated over endpoints stay under every per-method limit
         for attempt in range(4):
-            url = RPC_LIST[(i + attempt) % len(RPC_LIST)]
+            url = endpoint(GW_STATE, i, attempt)
             try:
                 r = requests.post(url, json={"jsonrpc": "2.0", "id": 1, "method": "eth_call",
                                              "params": [{"to": brain.address, "data": datas[i]}, "latest"]},
@@ -186,7 +235,7 @@ def push_snapshot(args, brain, w3, tag):
                           headers={**BROWSER_UA, "x-daemon-key": args.api_key or ""}, json=snap, timeout=20)
         print(f"[push] snapshot {tag} tick={snap['tick']} -> HTTP {r.status_code}")
     except Exception as e:
-        print(f"[push] snapshot {tag} failed: {e}", file=sys.stderr)
+        print(f"[push] snapshot {tag} failed: {scrub(e)}", file=sys.stderr)
 
 
 def main():
@@ -202,6 +251,10 @@ def main():
     ap.add_argument("--adaptive", action="store_true", help="stretch the interval as the balance drains")
     ap.add_argument("--survive-hours", type=float, default=12.0, help="spread remaining steps over this many hours")
     ap.add_argument("--max-interval", type=float, default=300.0, help="upper bound for the stretched interval (seconds)")
+    ap.add_argument("--free-only", action="store_true",
+                    help="route nothing through the metered ALCHEMY_BSC_RPC gateway")
+    ap.add_argument("--metered-state", action="store_true",
+                    help="also run the per-beat full-state sweep on the metered gateway (~121,700 compute units per beat)")
     args = ap.parse_args()
 
     if not (1 <= args.steps <= 8):
@@ -211,6 +264,24 @@ def main():
     load_dotenv(CONTRACTS_ENV)
     if not args.api_key:
         args.api_key = os.environ.get("DAEMON_KEY")
+
+    # the metered gateway leads whenever a key exists, but the URL itself embeds
+    # that key, so only the scheme+host is ever echoed
+    global GW, GW_STATE
+    metered = os.environ.get("ALCHEMY_BSC_RPC")
+    if metered:
+        SECRETS.append(metered)
+    GW, GW_STATE = select_gateways(metered, args.free_only, args.metered_state)
+    if metered:
+        host = metered.split("?")[0].rsplit("/", 1)[0]
+        if args.free_only:
+            print("alchemy key present, --free-only: staying on the public gateways")
+        else:
+            print(f"primary gateway : metered alchemy ({host})")
+        if args.metered_state:
+            print("state sweep     : metered alchemy, ~121,700 CU per beat")
+        else:
+            print(f"state sweep     : free gateways only ({N_NEURONS * 4 + N_NEURONS + 9} calls per beat)")
     pk = os.environ.get("DEPLOYER_PRIVATE_KEY")
     if not pk:
         print("missing DEPLOYER_PRIVATE_KEY", file=sys.stderr)
@@ -229,9 +300,9 @@ def main():
     blob_hex = json.loads(WEIGHTS.read_text(encoding="utf-8"))["blob"]
     blob = bytes.fromhex(blob_hex[2:] if blob_hex.startswith("0x") else blob_hex)
 
-    w3 = Web3(Web3.HTTPProvider(RPC))
+    w3 = Web3(Web3.HTTPProvider(GW[0]))
     if not w3.is_connected():
-        print("RPC unreachable", file=sys.stderr)
+        print(f"RPC unreachable ({scrub(GW[0]).split('?')[0].rsplit('/', 1)[0]})", file=sys.stderr)
         sys.exit(1)
     acct = w3.eth.account.from_key(pk)
     brain = w3.eth.contract(address=brain_addr, abi=abi)
@@ -297,7 +368,7 @@ def main():
                 sys.exit(3)
         except Exception as e:
             consecutive_fail += 1
-            print(f"[beat {beats+1}] failed: {e}", file=sys.stderr)
+            print(f"[beat {beats+1}] failed: {scrub(e)}", file=sys.stderr)
             if consecutive_fail >= 5:
                 print("too many consecutive failures, exiting (avoid burning gas for nothing)",
                       file=sys.stderr)
