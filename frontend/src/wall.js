@@ -177,6 +177,12 @@ async function scanEvents(head) {
     seen.add(k);
     return true;
   });
+  // rows are appended oldest-block-first, so trimming keeps the recent wall. This is
+  // a cache of a fallback only: the tiles themselves come from entries() reads, and
+  // an unbounded cache would eventually hit the localStorage quota and stop
+  // persisting, which would silently send every visit back to genesis.
+  const MAX_ROWS = 2000;
+  if (st.rows.length > MAX_ROWS) st.rows = st.rows.slice(-MAX_ROWS);
   cache.write(st);
   return { rows: st.rows, refused, scannedTo: st.to };
 }

@@ -499,6 +499,9 @@ read feed and its single write in one fenced file:
   `Inscribed` event walk that starts at the pinned deployment block
   (`125402131`) and advances in 2,000-block spans cached in `localStorage`, so a
   visitor who keeps the tab open keeps syncing instead of re-reading from genesis.
+  The cached event rows are capped at the newest 2,000 — an unbounded cache would
+  eventually exceed the storage quota, fail its `setItem` into a silent catch, and
+  send every visit back to genesis with no way to reach the head inside its budget.
   A span an endpoint refuses is counted and reported as refusal, never drawn as "no
   one has engraved anything"; a slot this page cannot read is drawn as *unreadable*,
   not as *open*. If `token()` on the ledger is not the token this page pins, the card
