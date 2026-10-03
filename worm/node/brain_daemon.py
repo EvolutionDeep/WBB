@@ -28,11 +28,16 @@ Gateway choice: when contracts/.env carries ALCHEMY_BSC_RPC, every write and
 scalar read goes through it first -- it answers eth_call reliably where the free
 dataseeds silently drop batch members and refuse eth_getLogs outright -- with the
 free gateways kept as the retry pool, so a metered hiccup degrades a read rather
-than stopping the heart. The one deliberate exception is the per-beat full-state
-sweep: 1,217 individual eth_calls, about 121,700 compute units at 100 CU each, so
-a 60-second heartbeat would bill roughly 7.3M CU an hour and spend a whole month
-of allowance inside four hours. That sweep therefore stays on the free gateways
-unless --metered-state opts it in; --free-only ignores the metered gateway at all.
+than stopping the heart.
+
+The one deliberate carve-out is the per-beat full-state sweep, 1,217 getters. They
+are sent as three JSON-RPC batches, which is what a heartbeat needs: ~2 s and no
+threads instead of 1,217 TLS requests that pinned several cores and stretched the
+beat past a minute. Batching does not make it cheaper on a metered gateway, though
+-- compute units are billed per inner eth_call, so 121,700 CU per beat, ~7.3M CU an
+hour at 60 s, a month of allowance inside four hours. The sweep therefore runs on
+the free gateways unless --metered-state opts it in; --free-only ignores the metered
+gateway at all.
 """
 import argparse
 import json
@@ -122,10 +127,17 @@ def push_events(args, tag):
 # public dataseeds rate-limit eth_call inside big batches: rotate endpoints
 # per chunk, throttle between chunks, back off and retry on limit errors
 FREE_RPCS = [
+    "https://bsc-rpc.publicnode.com",
     "https://bsc-dataseed1.bnbchain.org",
     "https://bsc-dataseed.binance.org",
     "https://bsc-dataseed1.defibit.io",
 ]
+# One JSON-RPC array per chunk: a batch-capable gateway serves 1,519 eth_calls in a
+# handful of requests instead of 1,519 TLS requests, which needed 24 threads, pinned
+# several cores and took 200 s -- longer than the beat itself. 500 members was tried
+# first and a publicnode chunk came back with a single error object instead of an
+# array, so the chunk stays small and every chunk is verified member by member.
+BATCH_CHUNK = 200
 # Gateway order for the two read loops, rebuilt in main() once .env is loaded so
 # a metered key in the environment takes priority without editing any code.
 GW = list(FREE_RPCS)          # writes, balance, tick: a handful of calls per beat
@@ -168,8 +180,38 @@ def select_gateways(metered, free_only=False, metered_state=False):
     return gw, gw_state
 
 
-def read_full_state(brain, w3):
-    """Batch-read the whole on-chain brain state: 1217 getters in ~13 batch RPCs.
+def batch_call(url, address, datas, block_tag="latest"):
+    """One JSON-RPC batch of eth_calls -> a list of hex results, order preserved.
+
+    A returned array is NOT proof of success: public gateways have answered HTTP
+    200 with members missing their result field, and one measured refusal came back
+    as a bare error object instead of an array at all. So every member is checked for
+    an absent error and a present result, and the id ordering is re-verified, or the
+    whole chunk is refused and the caller falls back to singles.
+    """
+    payload = [{"jsonrpc": "2.0", "id": n, "method": "eth_call",
+                "params": [{"to": address, "data": d}, block_tag]} for n, d in enumerate(datas)]
+    j = requests.post(url, json=payload, timeout=30).json()
+    if not isinstance(j, list) or len(j) != len(datas):
+        got = len(j) if isinstance(j, list) else scrub(j)
+        raise RuntimeError(f"batch answered {got} items for {len(datas)} calls")
+    by_id = {}
+    for item in j:
+        if not isinstance(item, dict) or "error" in item or "result" not in item:
+            raise RuntimeError(f"batch member unusable: {scrub(item)}")
+        by_id[item["id"]] = item["result"]
+    if len(by_id) != len(datas):
+        raise RuntimeError(f"batch ids collided: {len(by_id)} distinct of {len(datas)}")
+    return [by_id[n] for n in range(len(datas))]
+
+
+def _sweep_once(brain):
+    """One pass over the 1,519 getters, batched. Not yet checked for coherence.
+
+    Everything is read at "latest" because that is all a public gateway will serve:
+    asking it for a block number even seconds behind the head answers
+    -32000 "missing trie node" (measured on publicnode), so pinning is a luxury of
+    archive endpoints. Coherence is the caller's job -- see read_full_state.
 
     Returned shape mirrors the WBB worker snapshot so the worker can serve it
     verbatim (the poll path then costs zero RPC calls of its own).
@@ -185,7 +227,7 @@ def read_full_state(brain, w3):
     datas = [fn._encode_transaction_data() for fn in fns]
 
     def one(i):
-        # public dataseeds forbid big eth_call batches; concurrent singles
+        # fallback for whatever a batch could not deliver: concurrent singles
         # rotated over endpoints stay under every per-method limit
         for attempt in range(4):
             url = endpoint(GW_STATE, i, attempt)
@@ -204,9 +246,34 @@ def read_full_state(brain, w3):
         raise RuntimeError("unreachable")
 
     results = [None] * len(datas)
-    with ThreadPoolExecutor(24) as ex:
-        for i, res in ex.map(one, range(len(datas))):
-            results[i] = res
+    served, complaints = 0, []
+    for off in range(0, len(datas), BATCH_CHUNK):
+        chunk = datas[off:off + BATCH_CHUNK]
+        # A public gateway happily serves seven 200-member batches and then refuses
+        # the eighth for a few seconds (measured: "batch answered 1 items for N
+        # calls"). Backing off and walking the pool twice is far cheaper than the
+        # 200 singles that refusal would otherwise cost, and those singles are what
+        # pinned the cores before.
+        attempt = 0
+        while attempt < 2 * len(GW_STATE):
+            url = GW_STATE[attempt % len(GW_STATE)]
+            try:
+                results[off:off + len(chunk)] = batch_call(url, brain.address, chunk)
+                served += 1
+                break
+            except Exception as e:
+                complaints.append(f"{off}: {scrub(e)}")
+                attempt += 1
+                time.sleep(0.7 * attempt)
+        time.sleep(0.15)  # one polite pause between chunks, never a burst
+
+    holes = [i for i, v in enumerate(results) if v is None]
+    if holes:
+        with ThreadPoolExecutor(8) as ex:
+            for i, res in ex.map(one, holes):
+                results[i] = res
+    print(f"[sweep] {len(datas)} reads in {served} batch chunks"
+          + (f" + {len(holes)} singles (last refusal {complaints[-1]})" if holes else ""))
 
     out = {}
     for (name, signed), hexres in zip(scalars, results[:len(scalars)]):
@@ -225,12 +292,49 @@ def read_full_state(brain, w3):
     return out
 
 
+def read_full_state(brain, tries=3):
+    """A sweep whose snapshot provably describes one state of the animal.
+
+    stateHash() digests V, gate, stim, M, the pose and the tick -- every byte the
+    sweep reads -- so bracketing the sweep with two hash reads proves whether a beat
+    landed while it was running. If it did, the mixed half-and-half frame is thrown
+    away rather than pushed: the viewer would otherwise animate a worm that never
+    existed, and a stale-but-consistent frame beats a fresh-but-impossible one. The
+    last attempt is still returned, because an animal that is being advanced
+    constantly should not be hidden behind a perfect-frame demand.
+
+    The bracket reads go over the free pool on purpose: two reads a beat is nothing
+    for a public gateway, and a metered one would be billed twice a beat forever.
+    """
+    for attempt in range(1, tries + 1):
+        before = _digest(brain)
+        out = _sweep_once(brain)
+        after = _digest(brain)
+        if before == after:
+            return out
+        print(f"[sweep] state changed mid-read (attempt {attempt}/{tries}): "
+              "a beat landed inside the sweep, discarding the torn frame", file=sys.stderr)
+    return out
+
+
+def _digest(brain):
+    """stateHash() as one validated read, rotated over the free gateways."""
+    data = brain.functions.stateHash()._encode_transaction_data()
+    last = None
+    for attempt in range(3):
+        try:
+            return batch_call(endpoint(GW_STATE, 0, attempt), brain.address, [data])[0]
+        except Exception as e:
+            last = scrub(e)
+    raise RuntimeError(f"stateHash unreadable on the free pool: {last}")
+
+
 def push_snapshot(args, brain, w3, tag):
     """Hand the freshly read on-chain state to the worker (key-guarded)."""
     if not args.api or requests is None:
         return
     try:
-        snap = read_full_state(brain, w3)
+        snap = read_full_state(brain)
         r = requests.post(args.api.rstrip("/") + "/api/push-snapshot",
                           headers={**BROWSER_UA, "x-daemon-key": args.api_key or ""}, json=snap, timeout=20)
         print(f"[push] snapshot {tag} tick={snap['tick']} -> HTTP {r.status_code}")
