@@ -16,7 +16,7 @@
  * Everything else on the page stays read-only; this module is dynamically
  * imported only after the visitor explicitly enables it.
  */
-import { BrowserProvider, Contract, formatEther } from "ethers";
+import { BrowserProvider, Contract, formatEther, getAddress } from "ethers";
 import { t, label, take, onLangChange } from "./i18n.js";
 
 export const ADAPTER = "0xbe0C5117f740a9333614D806Bd50C3907186C6fD";
@@ -134,15 +134,23 @@ async function poke(intensity) {
   try {
     setStatus("c04.waiting", null, "");
     provider = provider || new BrowserProvider(window.ethereum);
-    const signer = await provider.getSigner();
+    // eth_accounts answers [] silently for a site nobody granted, which reads on screen
+    // as a dead click; eth_requestAccounts is the one call allowed to open the wallet,
+    // and it hands back plain address strings. listAccounts() does NOT: in ethers v6 it
+    // returns signer objects, and treating them as addresses threw
+    // "toLowerCase is not a function" here, before the transaction was ever built.
+    const granted = await provider.send("eth_requestAccounts", []);
+    if (!Array.isArray(granted) || !granted.length) throw new Error(t("c04.no_account"));
+    const signer = await provider.getSigner(granted[0]);
     const who = await signer.getAddress();
-    if (who.toLowerCase() !== (await provider.listAccounts())[0]?.toLowerCase()) {
-      throw new Error("account changed, try again");
-    }
+    // compared through getAddress() because a checksummed and a lowercase spelling of the
+    // same account are one account; a wallet that swapped the account between the enable
+    // click and this click would spend somebody else's gas, so the poke refuses
+    if (getAddress(who) !== getAddress(granted[0])) throw new Error(t("c04.account_changed"));
     const c = new Contract(ADAPTER, ADAPTER_ABI, signer);
     // chain guard: refuse to sign blind on the wrong network
     const net = await provider.getNetwork();
-    if (BigInt(net.chainId) !== 56n) throw new Error("connect to BNB Chain mainnet (chainId 56)");
+    if (BigInt(net.chainId) !== 56n) throw new Error(t("c04.wrong_chain"));
     const tx = await c.inject(intensity);
     setStatus("c04.tx_sent", { h: tx.hash.slice(0, 18) }, "");
     const rcpt = await tx.wait();

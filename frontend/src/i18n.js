@@ -196,6 +196,7 @@ export const MESSAGES = {
   "c04.idx": { en: "idx {n}", zh: "编号 {n}" },
   "c04.ago_min": { en: "{m}m ago", zh: "{m} 分钟前" },
   "c04.no_wallet": { en: "no wallet detected — install an EIP-1193 browser wallet first", zh: "未检测到钱包 —— 请先安装一个 EIP-1193 浏览器钱包" },
+  "c04.no_account": { en: "your wallet shared no account — approve the connect prompt, then poke again", zh: "钱包没有共享任何账户 —— 先在钱包里批准连接，再投喂一次" },
   "c04.waiting": { en: "waiting for your wallet…", zh: "等待你的钱包…" },
   "c04.account_changed": { en: "account changed, try again", zh: "账户发生变化，请重试" },
   "c04.wrong_chain": { en: "connect to BNB Chain mainnet (chainId 56)", zh: "请连接到 BNB Chain 主网（chainId 56）" },

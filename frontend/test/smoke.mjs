@@ -71,6 +71,20 @@ has(pokeAddrs.length > 0 && pokeAddrs.every((a) => a === "0xbe0c5117f740a9333614
   "SenseAdapter is the only address in poke.js");
 // the write path must stay opt-in: main.js only dynamic-imports the module
 has(main.includes('import("./poke.js")'), "poke loads lazily via dynamic import in main.js");
+// ethers v6 listAccounts() answers with signer OBJECTS, not address strings. Reading one
+// as a string threw "toLowerCase is not a function" on the way to the transaction, so the
+// button reported a failure and the wallet never opened -- a shape bug, fenced by shape.
+has(!/provider\.listAccounts\(/.test(poke), "poke never reads listAccounts() as a list of addresses");
+has(poke.includes('"eth_requestAccounts"'), "poke asks the wallet for permission rather than assuming a grant");
+has(poke.includes("getAddress("), "poke compares accounts in one checksummed spelling");
+// the two refusals this module can raise are visitor-facing, so they belong to the
+// dictionary: they used to be hardcoded English and a Chinese page answered an error in
+// a language the rest of the card was not speaking
+has(
+  poke.includes('t("c04.account_changed")') && poke.includes('t("c04.wrong_chain")') &&
+    poke.includes('t("c04.no_account")'),
+  "poke's refusals are looked up per language instead of spelled out in English",
+);
 
 // --- inscription wall: the read-only half. It is already inside the global guard
 // above (that is the point of splitting it from the engraver); these assertions
