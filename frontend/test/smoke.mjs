@@ -21,7 +21,7 @@ const main = readFileSync(join(root, "src", "main.js"), "utf8");
 // without paying cannot gain a signing path without failing this test. Only the
 // engraving form (src/engrave.js), loaded behind a second click from wall.js, may
 // touch a wallet, alongside the two worm-interaction paths (poke, wake).
-const WRITE_MODULES = ["poke.js", "wake.js", "engrave.js"];
+const WRITE_MODULES = ["poke.js", "wake.js", "engrave.js", "guess.js"];
 const srcFiles = readdirSync(join(root, "src")).filter((f) => f.endsWith(".js"));
 const guardFiles = srcFiles.filter((f) => !WRITE_MODULES.includes(f));
 const allSrc = guardFiles.map((f) => readFileSync(join(root, "src", f), "utf8")).join("\n");
@@ -110,6 +110,29 @@ has(main.includes('import("./wake.js")') && main.includes("wireWake()"), "wake l
 has(
   wake.includes('t("c04.wrong_chain")') && wake.includes('t("c04.no_account")') && wake.includes('t("c04.wake_root_fail")'),
   "wake's refusals are looked up per language instead of spelled out in English",
+);
+
+// --- guess module: the fourth sanctioned write path, the prediction game.
+// Fenced to WormGuess + Token and nothing else. Never the brain, never the adapter.
+const guess = readFileSync(join(root, "src", "guess.js"), "utf8");
+has(guess.includes('"0x8d3c1e2fED66aAB5293d0FC8983988Df15e6353b"'), "guess targets the pinned WormGuess");
+has(guess.includes('"0xA18f90eF3d4cc543141986c80442F87a2d2a7777"'), "guess pins the project token");
+has(guess.includes("function createRound(uint256 threshold) external"), "guess encodes createRound");
+has(guess.includes("function join(uint256 id, bool yes, uint256 nominal) external"), "guess encodes join");
+has(guess.includes("function approve(address spender, uint256 amount) external"), "guess approves the token");
+absent(guess, "advance(", "guess never advances the brain itself");
+absent(guess, "stimulate(", "guess never stimulates the brain");
+absent(guess, "inject(", "guess never touches the adapter");
+absent(guess, "privatekey", "guess never handles a raw key");
+absent(guess, "mnemonic", "guess never handles a mnemonic");
+const guessAddrs = [...guess.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase());
+const GUESS_OK_ADDRS = ["0x8d3c1e2fed66aab5293d0fc8983988df15e6353b", "0xa18f90ef3d4cc543141986c80442f87a2d2a7777", "0x49e89c58ba3b1f4bee9a9cfdbc00628cb33fc6a3"];
+has(guessAddrs.length > 0 && guessAddrs.every((a) => GUESS_OK_ADDRS.includes(a)),
+  "WormGuess, Token and Brain are the only addresses in guess.js");
+has(main.includes('import("./guess.js")') && main.includes("wireGuess()"), "guess loads lazily via dynamic import in main.js");
+has(
+  guess.includes('t("c04.wrong_chain")') && guess.includes('t("c04.no_account")'),
+  "guess\u2019s refusals are looked up per language",
 );
 
 // --- inscription wall: the read-only half. It is already inside the global guard

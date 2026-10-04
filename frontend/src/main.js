@@ -726,6 +726,30 @@ function wirePerceive() {
   }
 }
 
+// WormGuess: the fourth sanctioned write path. A permissionless prediction game
+// where the answer is the worm's own next heartbeat. Loads behind its own click,
+// pins WormGuess + Token, and is fenced by a dedicated smoke guard.
+function wireGuess() {
+  const b = el("guess-enable");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    try {
+      const m = await import("./guess.js");
+      m.init();
+      b.disabled = true;
+      const cb = el("guess-create");
+      const yb = el("guess-yes");
+      const nb = el("guess-no");
+      if (cb) { cb.disabled = false; cb.addEventListener("click", () => m.createRound(10)); }
+      if (yb) { yb.disabled = false; yb.addEventListener("click", () => m.joinRound(1, true, "1000000000000000000")); }
+      if (nb) { nb.disabled = false; nb.addEventListener("click", () => m.joinRound(1, false, "1000000000000000000")); }
+    } catch (e) {
+      const s = el("guess-status");
+      if (s) label(take(s), "c04.load_fail", { m: (e && e.message) || e });
+    }
+  }, { once: true });
+}
+
 async function boot() {
   // the dictionary is applied before anything is drawn, so the very first paint of a
   // Chinese visitor is Chinese and never a flash of English
@@ -742,6 +766,7 @@ async function boot() {
   wireWall();
   wireJournal();
   wirePerceive();
+  wireGuess();
   // a language switch re-renders from the reading already in hand, re-renders the static
   // evidence, and only then lets one slow beat re-word the event feed from the chain
   onLangChange(() => { renderReadout(); renderEvidence(); poll(true); });

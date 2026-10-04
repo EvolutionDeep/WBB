@@ -364,8 +364,24 @@ export const MESSAGES = {
   "c09.audio_fail": { en: "audio failed: {m}", zh: "音频失败：{m}" },
   "c09.note": { en: "Web Audio maps every neuron spike to a short click (pitch from membrane voltage). The canvas draws a unique generative pattern seeded by the current stateHash \u2014 a fingerprint of the brain\u2019s entire state at this instant. No data leaves your browser; everything derives from reads already on this page.", zh: "Web Audio 把每个神经元放电映射为短促 clicks（音高由膜电位决定）。画布用当前 stateHash 作种子绘制唯一的生成图案 \u2014 这一刻大脑整体状态的指纹。数据不离开你的浏览器，所有素材来自本页已有的读取。" },
 
+  // ---- 10 · wormguess ----
+  "c10.title": { en: "WormGuess (bet against the next beat)", zh: "线虫竞猜（赌下一次心跳）" },
+  "c10.btn_enable": { en: "ENABLE GUESS UI", zh: "开启竞猜界面" },
+  "c10.k_state": { en: "STATE", zh: "状态" },
+  "c10.status_off": { en: "disabled \u2014 press to load the game", zh: "已禁用 \u2014 按下加载游戏" },
+  "c10.state": { en: "{rounds} rounds played \u00b7 current tick {tick}", zh: "已进行 {rounds} 局 \u00b7 当前 tick {tick}" },
+  "c10.waiting": { en: "waiting for wallet\u2026", zh: "等待钱包\u2026" },
+  "c10.created": { en: "round opened at block {tick}", zh: "已在区块 {tick} 开局" },
+  "c10.approving": { en: "approving token allowance\u2026", zh: "正在授权代币额度\u2026" },
+  "c10.joining": { en: "joining round\u2026", zh: "正在加入\u2026" },
+  "c10.joined": { en: "joined {side} with 1 token", zh: "已加入 {side}，押注 1 代币" },
+  "c10.btn_create": { en: "OPEN ROUND (threshold 10)", zh: "开局（阈值 10）" },
+  "c10.btn_yes": { en: "JOIN YES (1 token)", zh: "押 YES（1 代币）" },
+  "c10.btn_no": { en: "JOIN NO (1 token)", zh: "押 NO（1 代币）" },
+  "c10.note": { en: "WormGuess is a wager on the worm\u2019s own next heartbeat: will more than N of its 302 neurons fire on the next tick? The answer comes from totalSpikes() \u2014 the animal\u2019s own counter, not an oracle. No house, no operator, no admin keys. You stake the project token, and settlement is permissionless.", zh: "线虫竞猜是对它下一次心跳的押注：下一 tick 会有多少个神经元放电超过 N？答案来自 totalSpikes() —— 动物自己的计数器，不是预言机。无庄家、无管理员、无密钥。你用项目代币押注，结算无需许可。" },
+
   // ---- footer ----
-  "foot.ro": { en: "READ-ONLY BY DEFAULT \u00b7 THREE OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET", zh: "默认只读 \u00b7 三条需主动开启的写入路径（投喂、唤醒、刻字），各自钉住一个合约，并由你自己的钱包签名" },
+  "foot.ro": { en: "READ-ONLY BY DEFAULT \u00b7 FOUR OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE, GUESS), EACH PINNED TO ITS OWN CONTRACTS AND SIGNED BY YOUR WALLET", zh: "默认只读 \u00b7 四条需主动开启的写入路径（投喂、唤醒、刻字、竞猜），各自钉住其合约，由你自己的钱包签名" },
   "foot.booting": { en: "booting", zh: "启动中" },
 };
 

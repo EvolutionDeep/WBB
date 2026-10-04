@@ -210,6 +210,11 @@
   /* 09 . perception lab */
   .perceive-card { grid-column: 1 / -1; }
   .art-canvas { display: block; margin: 10px auto; border: 1px solid rgba(53,224,255,0.2); border-radius: 4px; background: #020810; max-width: 100%; }
+
+  /* 10 . wormguess */
+  .guess-card { grid-column: 1 / -1; }
+  .guess-feed { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 11px; }
+  .guess-row { padding: 5px 8px; border-left: 2px solid rgba(255,79,216,0.3); background: rgba(4,10,16,0.4); border-radius: 2px; color: #c8eaf8; }
 </style>
 </head>
 <body>
@@ -439,6 +444,26 @@
       on this page.
     </div>
   </section>
+
+  <!-- 7. WORMGUESS: on-chain prediction game -->
+  <section class="card guess-card" id="card-guess">
+    <h2><span class="num">10</span> \u00b7 <span data-i18n="c10.title">WormGuess (bet against the next beat)</span></h2>
+    <div class="viz-bar">
+      <button id="guess-enable" type="button" data-i18n="c10.btn_enable">ENABLE GUESS UI</button>
+    </div>
+    <div class="row"><span class="k" data-i18n="c10.k_state">STATE</span><span id="guess-status" class="note" data-i18n="c10.status_off">disabled \u2014 press to load the game</span></div>
+    <div id="guess-feed" class="guess-feed"></div>
+    <div class="viz-bar" style="margin-top:8px">
+      <button id="guess-create" type="button" disabled data-i18n="c10.btn_create">OPEN ROUND (threshold 10)</button>
+      <button id="guess-yes" type="button" disabled data-i18n="c10.btn_yes">JOIN YES (1 token)</button>
+      <button id="guess-no" type="button" disabled data-i18n="c10.btn_no">JOIN NO (1 token)</button>
+    </div>
+    <div class="note" data-i18n="c10.note">
+      WormGuess is a wager on the worm\u2019s own next heartbeat: will more than N of its 302 neurons fire
+      on the next tick? The answer comes from totalSpikes() \u2014 the animal\u2019s own counter, not an oracle.
+      No house, no operator, no admin keys. You stake the project token, and settlement is permissionless.
+    </div>
+  </section>
 </div>
 
 <footer>
@@ -446,7 +471,7 @@
   <span>RPC <span id="rpc-host" class="v mono">—</span></span>
   <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
   <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
-  <span class="ro" data-i18n="foot.ro">READ-ONLY BY DEFAULT \u00b7 THREE OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
+  <span class="ro" data-i18n="foot.ro">READ-ONLY BY DEFAULT \u00b7 FOUR OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE, GUESS), EACH PINNED TO ITS OWN CONTRACTS AND SIGNED BY YOUR WALLET</span>
 </footer>
 
 <script type="module" src="/src/main.js"></script>
