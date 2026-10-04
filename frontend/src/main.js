@@ -675,6 +675,57 @@ function wireWall() {
   }, { once: true });
 }
 
+// Journal + leaderboard: a read-only card that fetches narrative entries and waker
+// rankings from the project's own Worker. Lazy-imported so it never weighs on boot.
+function wireJournal() {
+  const b = el("journal-load");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const m = await import("./journal.js");
+      m.init();
+      const rb = el("journal-refresh");
+      if (rb) rb.disabled = false;
+    } catch (e) {
+      b.disabled = false;
+      const s = el("journal-status");
+      if (s) label(take(s), "c08.fail", { m: (e && e.message) || e });
+    }
+  }, { once: true });
+}
+
+// Perception Lab: sound + generative art. Both are purely read-only (Web Audio
+// and Canvas), no wallet, no network beyond the cached snapshot fetch already
+// present. Loaded behind a click to satisfy the AudioContext user-gesture rule.
+function wirePerceive() {
+  const sb = el("sound-enable");
+  const stb = el("sound-stop");
+  if (sb) {
+    sb.addEventListener("click", async () => {
+      try {
+        const s = await import("./sound.js");
+        const a = await import("./art.js");
+        a.init();
+        window.__wormArt = a;
+        s.start();
+        sb.disabled = true;
+        if (stb) stb.disabled = false;
+      } catch (e) {
+        const st = el("sound-status");
+        if (st) label(take(st), "c09.audio_fail", { m: (e && e.message) || e });
+      }
+    }, { once: false });
+  }
+  if (stb) {
+    stb.addEventListener("click", async () => {
+      try { const s = await import("./sound.js"); s.stop(); } catch { /* silent */ }
+      stb.disabled = true;
+      if (sb) sb.disabled = false;
+    }, { once: false });
+  }
+}
+
 async function boot() {
   // the dictionary is applied before anything is drawn, so the very first paint of a
   // Chinese visitor is Chinese and never a flash of English
@@ -689,6 +740,8 @@ async function boot() {
   wireWake();
   wireReplay();
   wireWall();
+  wireJournal();
+  wirePerceive();
   // a language switch re-renders from the reading already in hand, re-renders the static
   // evidence, and only then lets one slow beat re-word the event feed from the chain
   onLangChange(() => { renderReadout(); renderEvidence(); poll(true); });

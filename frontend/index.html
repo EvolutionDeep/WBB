@@ -188,6 +188,28 @@
   }
   .v.err, .note.err { color: var(--red); }
   .v.ok { color: var(--grn); }
+
+  /* 08 . journal & leaderboard */
+  .journal-card { grid-column: 1 / -1; }
+  .journal-feed { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; max-height: 320px; overflow-y: auto; }
+  .journal-entry {
+    padding: 8px 10px; border-left: 2px solid rgba(53,224,255,0.4);
+    background: rgba(4,10,16,0.5); border-radius: 2px; font-size: 12px; color: #c8eaf8;
+  }
+  .journal-entry .tick-badge { font-weight: 700; color: var(--cyan); margin-right: 6px; }
+  .journal-entry .entry-time { font-size: 10px; color: rgba(148,205,226,0.45); float: right; }
+  .wakers-table { display: grid; gap: 4px; margin-top: 6px; }
+  .waker-row {
+    display: grid; grid-template-columns: 32px 1fr 70px; gap: 8px; align-items: center;
+    padding: 5px 8px; border-radius: 3px; font-size: 11px; background: rgba(4,10,16,0.4);
+  }
+  .waker-row .rank { color: var(--mag); font-weight: 700; }
+  .waker-row .addr { color: rgba(148,205,226,0.7); font-family: monospace; overflow: hidden; text-overflow: ellipsis; }
+  .waker-row .steps { color: var(--cyan); text-align: right; font-weight: 600; }
+
+  /* 09 . perception lab */
+  .perceive-card { grid-column: 1 / -1; }
+  .art-canvas { display: block; margin: 10px auto; border: 1px solid rgba(53,224,255,0.2); border-radius: 4px; background: #020810; max-width: 100%; }
 </style>
 </head>
 <body>
@@ -382,6 +404,41 @@
     <div id="evidence"></div>
     <div class="note" data-i18n="c07.note">These are the three on-chain records kept in the project README. They are history, not live polling.</div>
   </section>
+
+  <!-- 5. JOURNAL + LEADERBOARD -->
+  <section class="card journal-card" id="card-journal">
+    <h2><span class="num">08</span> · <span data-i18n="c08.title">The worm\u2019s journal &amp; who keeps it alive</span></h2>
+    <div class="viz-bar">
+      <button id="journal-load" type="button" data-i18n="c08.btn_load">LOAD JOURNAL</button>
+      <button id="journal-refresh" type="button" disabled data-i18n="c08.btn_refresh">REFRESH</button>
+    </div>
+    <div class="row"><span class="k" data-i18n="c08.k_status">STATUS</span><span id="journal-status" class="note" data-i18n="c08.status_off">not loaded</span></div>
+    <div id="journal-feed" class="journal-feed"></div>
+    <h3 data-i18n="c08.h_wakers">TOP WAKERS</h3>
+    <div id="wakers-table" class="wakers-table"></div>
+    <div class="note" data-i18n="c08.note">
+      Every heartbeat generates one narrative entry drawn from real on-chain data: how many neurons
+      fired, which way the body moved, how fast. The leaderboard aggregates every address that ever
+      called advance(1, genome) on this contract \u2014 including yours if you press the button above.
+    </div>
+  </section>
+
+  <!-- 6. PERCEPTION LAB: sound + generative art from live neural data -->
+  <section class="card perceive-card" id="card-perceive">
+    <h2><span class="num">09</span> · <span data-i18n="c09.title">Perception Lab (listen &amp; see the brain)</span></h2>
+    <div class="viz-bar">
+      <button id="sound-enable" type="button" data-i18n="c09.btn_sound">START LISTENING</button>
+      <button id="sound-stop" type="button" disabled data-i18n="c09.btn_stop">STOP</button>
+    </div>
+    <div class="row"><span class="k" data-i18n="c09.k_audio">AUDIO</span><span id="sound-status" class="note" data-i18n="c09.audio_off">silent \u2014 press START to hear each neural spike as a click</span></div>
+    <canvas id="art-canvas" width="400" height="400" class="art-canvas"></canvas>
+    <div class="note" data-i18n="c09.note">
+      Web Audio maps every neuron spike to a short click (pitch from membrane voltage). The canvas
+      draws a unique generative pattern seeded by the current stateHash \u2014 a fingerprint of the brain\u2019s
+      entire state at this instant. No data leaves your browser; everything derives from reads already
+      on this page.
+    </div>
+  </section>
 </div>
 
 <footer>
@@ -389,7 +446,7 @@
   <span>RPC <span id="rpc-host" class="v mono">—</span></span>
   <span>READOUT <a class="v mono" id="readout-addr" target="_blank" rel="noopener">—</a></span>
   <span>ADAPTER <a class="v mono" id="adapter-addr" target="_blank" rel="noopener">—</a></span>
-  <span class="ro" data-i18n="foot.ro">READ-ONLY BY DEFAULT · TWO OPT-IN WRITE PATHS (POKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
+  <span class="ro" data-i18n="foot.ro">READ-ONLY BY DEFAULT \u00b7 THREE OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET</span>
 </footer>
 
 <script type="module" src="/src/main.js"></script>

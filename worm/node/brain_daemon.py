@@ -124,6 +124,20 @@ def push_events(args, tag):
         print(f"[push] events {tag} failed: {scrub(e)}", file=sys.stderr)
 
 
+def push_journal(args, tick, fired, total_spikes, tag):
+    """Push journal entry to the worker for narrative generation."""
+    if not args.api or requests is None:
+        return
+    try:
+        r = requests.post(args.api.rstrip("/") + "/api/journal-push",
+                          headers={**BROWSER_UA, "x-daemon-key": args.api_key or ""},
+                          json={"tick": tick, "fired": fired, "totalSpikes": total_spikes},
+                          timeout=10)
+        print(f"[push] journal {tag} tick={tick} -> HTTP {r.status_code}")
+    except Exception as e:
+        print(f"[push] journal {tag} failed: {scrub(e)}", file=sys.stderr)
+
+
 # public dataseeds rate-limit eth_call inside big batches: rotate endpoints
 # per chunk, throttle between chunks, back off and retry on limit errors
 FREE_RPCS = [
@@ -459,6 +473,9 @@ def main():
             print(f"[beat {beats}] tick {tick_before}->{tick_after} totalSpikes={total_spikes} "
                   f"gasUsed={rcpt['gasUsed']} tx=0x{txh.hex()[-12:]}")
             push_snapshot(args, brain, w3, f"beat {beats}")
+            # journal push needs fired from EVBUF before push_events clears it
+            last_adv = next((e for e in reversed(EVBUF) if e.get("kind") == "Advanced"), None)
+            push_journal(args, tick_after, last_adv["fired"] if last_adv else 0, total_spikes, f"beat {beats}")
             push_events(args, f"beat {beats}")
 
             bal = w3.eth.get_balance(acct.address)

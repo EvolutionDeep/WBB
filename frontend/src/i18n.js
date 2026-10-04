@@ -340,8 +340,32 @@ export const MESSAGES = {
   "c07.3.desc": { en: "At block 125298262 both sides read the same stateHash — WormReadout forwards brain.stateHash() directly.", zh: "在区块 125298262 上两侧读到同一个 stateHash —— WormReadout 直接转发 brain.stateHash()。" },
   "c07.3.note": { en: "During the wait window tick stayed 6 and NO advance was observed. This is a read-only stateHash equality, NOT a verified live beat.", zh: "在等待窗口内心跳保持 6，且没有观测到任何推进。这只是一次只读的 stateHash 相等验证，不是已验证的活体心跳。" },
 
+  // ---- 08 · journal & leaderboard ----
+  "c08.title": { en: "The worm\u2019s journal & who keeps it alive", zh: "线虫日志与唤醒者排行" },
+  "c08.btn_load": { en: "LOAD JOURNAL", zh: "加载日志" },
+  "c08.btn_refresh": { en: "REFRESH", zh: "刷新" },
+  "c08.k_status": { en: "STATUS", zh: "状态" },
+  "c08.status_off": { en: "not loaded", zh: "尚未加载" },
+  "c08.loading": { en: "fetching entries\u2026", zh: "正在拉取日志\u2026" },
+  "c08.loaded": { en: "{n} entries \u00b7 {w} wakers", zh: "{n} 条日志 \u00b7 {w} 位唤醒者" },
+  "c08.fail": { en: "load failed: {m}", zh: "加载失败：{m}" },
+  "c08.empty": { en: "No journal entries yet \u2014 the worm hasn\u2019t advanced since the journal was deployed.", zh: "暂无日志 \u2014 日志功能上线后线虫还未推进过。" },
+  "c08.no_wakers": { en: "No wakers recorded yet.", zh: "暂无唤醒者记录。" },
+  "c08.h_wakers": { en: "TOP WAKERS", zh: "唤醒排行榜" },
+  "c08.note": { en: "Every heartbeat generates one narrative entry drawn from real on-chain data: how many neurons fired, which way the body moved, how fast. The leaderboard aggregates every address that ever called advance(1, genome) on this contract \u2014 including yours if you press the button above.", zh: "每次心跳从真实链上数据生成一条叙事：多少神经元放电、身体往哪转、多快。排行榜汇总每个调用过 advance(1, genome) 的地址 \u2014 如果你点了上面的按钮，也包括你。" },
+
+  // ---- 09 · perception lab ----
+  "c09.title": { en: "Perception Lab (listen & see the brain)", zh: "感知实验室（听见并看见大脑）" },
+  "c09.btn_sound": { en: "START LISTENING", zh: "开始聆听" },
+  "c09.btn_stop": { en: "STOP", zh: "停止" },
+  "c09.k_audio": { en: "AUDIO", zh: "音频" },
+  "c09.audio_off": { en: "silent \u2014 press START to hear each neural spike as a click", zh: "静默 \u2014 按开始即可听见每根神经元脉冲" },
+  "c09.audio_on": { en: "listening \u2014 spike clicks playing on each new tick", zh: "聆听中 \u2014 每次新心跳都在播放脉冲声" },
+  "c09.audio_fail": { en: "audio failed: {m}", zh: "音频失败：{m}" },
+  "c09.note": { en: "Web Audio maps every neuron spike to a short click (pitch from membrane voltage). The canvas draws a unique generative pattern seeded by the current stateHash \u2014 a fingerprint of the brain\u2019s entire state at this instant. No data leaves your browser; everything derives from reads already on this page.", zh: "Web Audio 把每个神经元放电映射为短促 clicks（音高由膜电位决定）。画布用当前 stateHash 作种子绘制唯一的生成图案 \u2014 这一刻大脑整体状态的指纹。数据不离开你的浏览器，所有素材来自本页已有的读取。" },
+
   // ---- footer ----
-  "foot.ro": { en: "READ-ONLY BY DEFAULT · TWO OPT-IN WRITE PATHS (POKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET", zh: "默认只读 · 两条需主动开启的写入路径（投喂、刻字），各自钉住一个合约，并由你自己的钱包签名" },
+  "foot.ro": { en: "READ-ONLY BY DEFAULT \u00b7 THREE OPT-IN WRITE PATHS (POKE, WAKE, ENGRAVE), EACH PINNED TO ONE CONTRACT AND SIGNED BY YOUR OWN WALLET", zh: "默认只读 \u00b7 三条需主动开启的写入路径（投喂、唤醒、刻字），各自钉住一个合约，并由你自己的钱包签名" },
   "foot.booting": { en: "booting", zh: "启动中" },
 };
 

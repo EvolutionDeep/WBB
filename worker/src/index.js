@@ -385,6 +385,204 @@ async function apiEvents(env, url) {
   return json(payload);
 }
 
+// ---- journal: narrative entries from the worm's life ----
+// Every observed tick advance produces one short story sentence. Stored as a ring
+// in KV so IFTTT / Zapier can poll the RSS feed, and the frontend can render a
+// living timeline. No external LLM; templates are deterministic and honest.
+
+const JOURNAL_KEY = "journal";
+const JOURNAL_MAX = 200;
+
+// Neuron name groups for richer narrative
+const SENSORY = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12]; // ASEL/R, AWAL/R, AWCL/R etc
+const MOTOR = [26, 27, 28, 29, 30, 31, 32, 33, 34]; // AVA/B/C, AAV/B, ADAL/R
+const INTER = [45, 46, 72, 73, 76, 77]; // interneurons known from prior data
+
+function pickNeuronName(idx) {
+  if (SENSORY.includes(idx)) return "a sensory neuron";
+  if (MOTOR.includes(idx)) return "a motor neuron";
+  if (INTER.includes(idx)) return "an interneuron";
+  return `neuron #${idx}`;
+}
+
+function generateNarrative(snap, latestAdv) {
+  const tick = snap.tick;
+  const fired = latestAdv ? latestAdv.fired : 0;
+  const approach = snap.approach || 0;
+  const turn = snap.turn || 0;
+  const speed = snap.speed || 0;
+
+  // mood from readout
+  const direction = approach > 100 ? "toward something it senses" :
+                    approach < -100 ? "away from what’s ahead" : "unsure where to go";
+  const turning = turn > 50 ? "curving right" : turn < -50 ? "curving left" : "holding its line";
+  const pace = speed > 200 ? "quickening" : speed < -200 ? "slowing, almost still" : "drifting at its own pace";
+
+  const templates = [
+    `Tick ${tick}. ${fired} of 302 neurons fired. It moved ${direction}, ${turning}, ${pace}.`,
+    `At beat ${tick}, ${fired} neurons spoke at once. ${turning.charAt(0).toUpperCase() + turning.slice(1)} \u2014 the body ${pace}, drawn ${direction}.`,
+    `The worm took its ${tick}\u2071\u1d9e\u02b0 step. ${fired} signals cascaded through its circuit. ${pace}, ${turning}.`,
+    `Beat ${tick}: a whisper of ${fired} activations rippled through the connectome. It is ${pace} and ${turning}, reaching ${direction}.`,
+  ];
+  const idx = tick % templates.length;
+  return templates[idx];
+}
+
+async function loadJournal(env) {
+  if (!env.WBB_STORE) return [];
+  const raw = await env.WBB_STORE.get(JOURNAL_KEY);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+async function appendJournal(env, entry) {
+  if (!env.WBB_STORE) return;
+  const ring = await loadJournal(env);
+  // deduplicate by tick
+  if (ring.some((e) => e.tick === entry.tick)) return;
+  ring.push(entry);
+  if (ring.length > JOURNAL_MAX) ring.splice(0, ring.length - JOURNAL_MAX);
+  await env.WBB_STORE.put(JOURNAL_KEY, JSON.stringify(ring));
+}
+
+async function apiJournal(env, url) {
+  const entries = await loadJournal(env);
+  const limit = Math.min(50, parseInt(url.searchParams.get("limit") || "20", 10));
+  const recent = entries.slice(-limit).reverse();
+  return json({ count: entries.length, entries: recent });
+}
+
+function escapeXml(s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+async function apiJournalRss(env) {
+  const entries = await loadJournal(env);
+  const recent = entries.slice(-30).reverse();
+  let rss = `<?xml version="1.0" encoding="UTF-8"?>\n<rss version="2.0">\n<channel>\n`;
+  rss += `<title>WormBrain Journal</title>\n<description>Life narrations of the on-chain C. elegans brain on BSC</description>\n`;
+  rss += `<link>https://bscworm.com</link>\n<lastBuildDate>${new Date().toUTCString()}</lastBuildDate>\n`;
+  for (const e of recent) {
+    rss += `<item>\n<title>${escapeXml("Tick " + e.tick)}</title>\n`;
+    rss += `<description>${escapeXml(e.text)}</description>\n`;
+    rss += `<guid>worm-tick-${e.tick}</guid>\n`;
+    rss += `<pubDate>${new Date(e.at * 1000).toUTCString()}</pubDate>\n</item>\n`;
+  }
+  rss += `</channel>\n</rss>`;
+  return new Response(rss, { headers: { "content-type": "application/rss+xml; charset=utf-8", "access-control-allow-origin": "*" } });
+}
+
+// The daemon calls this each beat; it generates + stores an entry and optionally
+// fires an external webhook (IFTTT maker, Discord, etc.)
+async function apiJournalPush(env, req) {
+  if (!env.DAEMON_KEY || req.headers.get("x-daemon-key") !== env.DAEMON_KEY) return json({ error: "forbidden" }, 403);
+  let d;
+  try { d = await req.json(); } catch { return json({ error: "bad json" }, 400); }
+  if (!Number.isInteger(d.tick) || d.tick <= 0) return json({ error: "tick required" }, 400);
+
+  // derive readout from snapshot cache if not supplied
+  const snap = d;
+  if (!snap.approach && !snap.turn && !snap.speed) {
+    // use the push cache (the daemon just pushed a full snapshot moments ago)
+    const cached = pushCache.data || (env.WBB_STORE ? await (async () => {
+      try { const raw = await env.WBB_STORE.get("snapshot"); return raw ? JSON.parse(raw).data : null; } catch { return null; }
+    })() : null);
+    if (cached) {
+      snap.approach = cached.approach || 0;
+      snap.turn = cached.turn || 0;
+      snap.speed = cached.speed || 0;
+    }
+  }
+  const lastAdv = d.fired ? { fired: d.fired } : (pushCache.data && d.totalSpikes ? { fired: d.totalSpikes - (pushCache.data.prevTotalSpikes || 0) } : null);
+  const text = generateNarrative(snap, lastAdv);
+  const entry = { tick: d.tick, at: Math.floor(Date.now() / 1000), text, fired: d.fired || 0 };
+  await appendJournal(env, entry);
+
+  // fire external webhook if configured (IFTTT maker URL, Discord, etc.)
+  if (env.JOURNAL_WEBHOOK) {
+    try {
+      await fetch(env.JOURNAL_WEBHOOK, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ value1: text, value2: String(d.tick), value3: String(d.fired || 0) }),
+        signal: AbortSignal.timeout(5000),
+      });
+    } catch { /* webhook failure must never break the daemon's beat */ }
+  }
+  return json({ ok: true, tick: d.tick, text });
+}
+
+// ---- wakers leaderboard ----
+
+const WAKERS_KEY = "wakers";
+const WAKERS_TTL_S = 300; // re-scan every 5 minutes
+let wakersCache = { at: 0, data: null };
+
+async function apiWakers(env) {
+  const now = Date.now() / 1000;
+  // check per-isolate memory cache
+  if (wakersCache.data && now - wakersCache.at < WAKERS_TTL_S) {
+    return json(wakersCache.data);
+  }
+  // check KV
+  if (env.WBB_STORE) {
+    const raw = await env.WBB_STORE.get(WAKERS_KEY);
+    if (raw) {
+      try {
+        const kv = JSON.parse(raw);
+        if (kv && kv.at && now - kv.at < WAKERS_TTL_S) {
+          wakersCache = { at: kv.at, data: kv.data };
+          return json(kv.data);
+        }
+      } catch { /* rebuild */ }
+    }
+  }
+  // scan recent events for Advanced tx, resolve senders
+  const addr = env.BRAIN_ADDRESS || "0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3";
+  const brainDeployBlock = 125312465n;
+  // read up to 20000 blocks back from head (covers most of the worm's life)
+  const head = BigInt(await rpc(env, "eth_blockNumber", []));
+  const from = head > 20000n ? head - 20000n : brainDeployBlock;
+  let logs;
+  try {
+    logs = await rpc(env, "eth_getLogs", [{ address: addr, fromBlock: "0x" + from.toString(16), topics: [EV.Advanced] }]);
+  } catch {
+    // fallback: use the daemon-pushed ring
+    const evs = evPush.length ? evPush : [];
+    const advs = evs.filter((e) => e.kind === "Advanced");
+    const wakers = {};
+    for (const e of advs) {
+      // cannot resolve sender without tx lookup; use tx hash prefix as anon
+      const key = e.tx ? e.tx.slice(0, 18) + "..." : "unknown";
+      wakers[key] = (wakers[key] || 0) + 1;
+    }
+    const list = Object.entries(wakers).map(([addr, steps]) => ({ addr, steps })).sort((a, b) => b.steps - a.steps).slice(0, 50);
+    const result = { total: list.reduce((s, e) => s + e.steps, 0), wakers: list, note: "sender resolution requires tx lookup" };
+    wakersCache = { at: now, data: result };
+    if (env.WBB_STORE) await env.WBB_STORE.put(WAKERS_KEY, JSON.stringify({ at: now, data: result }));
+    return json(result);
+  }
+  // batch resolve senders (limit to 200 txs to stay within time budget)
+  const txs = [...new Set(logs.map((l) => l.transactionHash))].slice(0, 200);
+  const senderMap = {};
+  await poolMap(txs, 8, async (txHash) => {
+    try {
+      const tx = await rpc(env, "eth_getTransactionByHash", [txHash]);
+      if (tx && tx.from) senderMap[txHash] = tx.from.toLowerCase();
+    } catch { /* skip */ }
+  });
+  const tally = {};
+  for (const lg of logs) {
+    const from_addr = senderMap[lg.transactionHash];
+    if (from_addr) tally[from_addr] = (tally[from_addr] || 0) + 1;
+  }
+  const list = Object.entries(tally).map(([a, steps]) => ({ addr: a, steps })).sort((a, b) => b.steps - a.steps).slice(0, 50);
+  const result = { total: list.reduce((s, e) => s + e.steps, 0), uniqueWakers: list.length, wakers: list };
+  wakersCache = { at: now, data: result };
+  if (env.WBB_STORE) await env.WBB_STORE.put(WAKERS_KEY, JSON.stringify({ at: now, data: result }));
+  return json(result);
+}
+
 // ---- browser read proxy (POST /api/rpc) ----
 
 // The dashboard, the wall and the poke feed all only ever READ: every transaction on this
@@ -542,8 +740,12 @@ export default {
       switch (url.pathname) {
         case "/api/snapshot": return await apiSnapshot(env);
         case "/api/events":   return await apiEvents(env, url);
+        case "/api/journal":  return await apiJournal(env, url);
+        case "/api/journal.rss": return await apiJournalRss(env);
+        case "/api/wakers":   return await apiWakers(env);
         case "/api/push-snapshot": return req.method === "POST" ? await apiPushSnapshot(env, req) : json({ error: "POST only" }, 405);
         case "/api/push-events": return req.method === "POST" ? await apiPushEvents(env, req) : json({ error: "POST only" }, 405);
+        case "/api/journal-push": return req.method === "POST" ? await apiJournalPush(env, req) : json({ error: "POST only" }, 405);
         case "/api/rpc": return req.method === "POST" ? await apiRpc(env, req) : json({ error: "POST only" }, 405);
         case "/api/status": {
           // A cold isolate has nothing cached yet. The rebuild has to stamp the
@@ -560,7 +762,7 @@ export default {
           return json({
             name: "WBB worker",
             worm: "the fully on-chain C. elegans brain on BSC mainnet",
-            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/rpc (POST, read-only)", "/api/status"],
+            endpoints: ["/api/snapshot", "/api/events?blocks=N", "/api/journal", "/api/journal.rss", "/api/wakers", "/api/rpc (POST, read-only)", "/api/status"],
           });
       }
     } catch (e) {
