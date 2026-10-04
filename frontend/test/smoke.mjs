@@ -2,9 +2,9 @@
 // Asserts the shipped UI is a pure observer by default: the frozen contract
 // addresses and Q20 scale are present, the HALTED staleness rule is surfaced, and
 // there is NO wallet/signing/transaction path in any module the page loads on its
-// own. Two modules are exempt from that global ban because they are the site's two
-// sanctioned write paths -- src/poke.js and src/engrave.js -- and each of those is
-// then fenced on its own, tighter than the global rule.
+// own. Three modules are exempt from that global ban because they are the site's
+// sanctioned write paths -- src/poke.js, src/wake.js and src/engrave.js -- and each
+// of those is then fenced on its own, tighter than the global rule.
 // Run: node frontend/test/smoke.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -16,12 +16,12 @@ import { MESSAGES, LANGS, DEFAULT_LANG, t } from "../src/i18n.js";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const main = readFileSync(join(root, "src", "main.js"), "utf8");
 // every module shipped in the bundle is covered by the read-only guard, EXCEPT the
-// two opt-in write paths. Note what is deliberately NOT exempt: the inscription
+// three opt-in write paths. Note what is deliberately NOT exempt: the inscription
 // wall (src/wall.js) stays inside the global guard, so the card a visitor browses
 // without paying cannot gain a signing path without failing this test. Only the
 // engraving form (src/engrave.js), loaded behind a second click from wall.js, may
-// touch a wallet.
-const WRITE_MODULES = ["poke.js", "engrave.js"];
+// touch a wallet, alongside the two worm-interaction paths (poke, wake).
+const WRITE_MODULES = ["poke.js", "wake.js", "engrave.js"];
 const srcFiles = readdirSync(join(root, "src")).filter((f) => f.endsWith(".js"));
 const guardFiles = srcFiles.filter((f) => !WRITE_MODULES.includes(f));
 const allSrc = guardFiles.map((f) => readFileSync(join(root, "src", f), "utf8")).join("\n");
@@ -84,6 +84,32 @@ has(
   poke.includes('t("c04.account_changed")') && poke.includes('t("c04.wrong_chain")') &&
     poke.includes('t("c04.no_account")'),
   "poke's refusals are looked up per language instead of spelled out in English",
+);
+
+// --- wake module: the third sanctioned write path, and the only one that can move the
+// animal. Fenced to the brain contract and advance(1, genome) and nothing else, so the
+// one control that changes the world cannot quietly grow a second, unreviewed door.
+const wake = readFileSync(join(root, "src", "wake.js"), "utf8");
+has(wake.includes('"0x49E89C58bA3b1f4BEe9a9CFdbC00628cB33fC6A3"'), "wake targets the pinned brain");
+has(wake.includes("function advance(uint256 n, bytes connBlob) external"), "wake encodes the brain's advance(uint256,bytes)");
+has(
+  wake.includes("keccak256(") && wake.includes("0x38dc5c120b55d24182cb3f81738c271c7255de5ffa1507f8aa4cb950494d8cac"),
+  "wake verifies the fetched genome hashes to the pinned connRoot before it will send",
+);
+// advance is the ONLY state-changing call: never the stimulus entry, never the adapter
+// or the ledger; and the refusals it shows are looked up per language, not hardcoded
+absent(wake, "stimulate(", "wake never stimulates the brain directly");
+absent(wake, "inject(", "wake never touches the adapter's inject");
+absent(wake, "0xbe0C5117f740a9333614D806Bd50C3907186C6fD", "wake never points at the SenseAdapter");
+absent(wake, "privatekey", "wake never handles a raw key");
+absent(wake, "mnemonic", "wake never handles a mnemonic");
+const wakeAddrs = [...wake.matchAll(/0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/g)].map((m) => m[0].toLowerCase());
+has(wakeAddrs.length > 0 && wakeAddrs.every((a) => a === "0x49e89c58ba3b1f4bee9a9cfdbc00628cb33fc6a3"),
+  "the brain is the only address in wake.js");
+has(main.includes('import("./wake.js")') && main.includes("wireWake()"), "wake loads lazily via dynamic import in main.js");
+has(
+  wake.includes('t("c04.wrong_chain")') && wake.includes('t("c04.no_account")') && wake.includes('t("c04.wake_root_fail")'),
+  "wake's refusals are looked up per language instead of spelled out in English",
 );
 
 // --- inscription wall: the read-only half. It is already inside the global guard

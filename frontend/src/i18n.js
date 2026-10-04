@@ -179,7 +179,7 @@ export const MESSAGES = {
   "c03.tick_word": { en: "tick", zh: "心跳" },
 
   // ---- 04 · poke (opt-in write path) ----
-  "c04.title": { en: "Poke the worm (opt-in · your wallet · your gas)", zh: "投喂线虫（需主动开启 · 你的钱包 · 你的 gas）" },
+  "c04.title": { en: "Touch the worm — poke it or wake it (opt-in · your wallet · your gas)", zh: "触碰线虫 —— 投喂它或唤醒它（需主动开启 · 你的钱包 · 你的 gas）" },
   "c04.btn_enable": { en: "ENABLE POKE UI", zh: "开启投喂界面" },
   "c04.btn_on": { en: "POKE UI ON", zh: "投喂界面已开启" },
   "c04.btn_food": { en: "POKE +2.0 → ASEL (food-like)", zh: "投喂 +2.0 → ASEL（类似食物）" },
@@ -187,8 +187,8 @@ export const MESSAGES = {
   "c04.status_off": { en: "disabled — this page stays read-only until you enable the poke UI", zh: "已禁用 —— 在你开启投喂界面之前，本页面保持只读" },
   "c04.k_result": { en: "RESULT", zh: "结果" },
   "c04.note": {
-    en: "The only write path on this site: it encodes exactly one call, SenseAdapter.inject(int256), signed and paid by YOUR own wallet (a few ten-thousandths of BNB). The brain is passive — your current queues into the chemoreceptor and bites on the NEXT advance by a keeper node. Nothing on this page can move, pause or own the animal.",
-    zh: "本站唯一的写入路径：它只编码一个调用 SenseAdapter.inject(int256)，由你自己的钱包签名并付费（几万分之一 BNB 量级）。大脑是被动的 —— 你注入的电流排进化学感受器，要在维护节点的下一次推进时才起作用。本页面没有任何东西能移动、暂停或拥有这只动物。",
+    en: "Two opt-in write paths live here. Poking encodes exactly one call, SenseAdapter.inject(int256), and only queues current into a chemoreceptor — it bites on the next advance. Waking encodes exactly one call, WormBrainV2.advance(1, genome), and is the only control on this site that actually moves the animal: permissionless, paid by YOUR wallet (~9.4M gas, one step per transaction). Nothing here can pause or own it.",
+    zh: "这里有两个需主动开启的写入路径。投喂只编码一个调用 SenseAdapter.inject(int256)，只把电流排进化学感受器 —— 要等下一次推进才生效。唤醒只编码一个调用 WormBrainV2.advance(1, genome)，是本站唯一真正让动物动起来的操作：无许可，由你的钱包付费（约 9.4M gas，一笔交易一步）。这里没有任何东西能暂停或拥有它。",
   },
   "c04.load_fail": { en: "poke module failed to load: {m}", zh: "投喂模块加载失败：{m}" },
   "c04.feed_empty": { en: "no pokes on record in the recent window — be the first, or let the keeper lead.", zh: "最近的区块窗口内没有投喂记录 —— 做第一个，或者让维护节点带头。" },
@@ -206,6 +206,16 @@ export const MESSAGES = {
   "c04.where_aser": { en: "ASER (repellent-like)", zh: "ASER（类似回避）" },
   "c04.reverted": { en: "poke tx reverted — nothing was written", zh: "投喂交易回滚了 —— 什么都没写进去" },
   "c04.not_sent": { en: "not sent: {m}", zh: "未发出：{m}" },
+
+  // ---- 04b · wake the worm (advance one step, the public heartbeat entry) ----
+  "c04.wake_enable": { en: "ENABLE WAKE UI", zh: "开启唤醒界面" },
+  "c04.wake_btn_on": { en: "WAKE UI ON", zh: "唤醒界面已开启" },
+  "c04.wake_go": { en: "ADVANCE 1 STEP (you pay gas)", zh: "推进 1 步（你付 gas）" },
+  "c04.wake_status_off": { en: "disabled — the page stays read-only until you enable the wake UI", zh: "已禁用 —— 在你开启唤醒界面之前，本页面保持只读" },
+  "c04.wake_fetching": { en: "checking the genome against connRoot…", zh: "正在用 connRoot 校验基因组…" },
+  "c04.wake_step": { en: "you woke it: tick {from} → {to} · one real on-chain step, on your gas", zh: "你唤醒了它：tick {from} → {to} · 真实的一步链上推进，花的是你的 gas" },
+  "c04.wake_moved_none": { en: "tx confirmed but the tick stayed at {n}", zh: "交易已确认，但 tick 仍停在 {n}" },
+  "c04.wake_root_fail": { en: "genome blob does not match the pinned connRoot — refusing to send", zh: "基因组 blob 与钉住的 connRoot 不符 —— 拒绝发送" },
 
   // ---- 05 · inscription wall (read view) ----
   "c05.title": { en: "Inscription wall (read-only until you arm it)", zh: "铭文墙（在你装载之前保持只读）" },

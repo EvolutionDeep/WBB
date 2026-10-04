@@ -17,11 +17,11 @@ import { t, label, take, onLangChange, localeTag, initI18n } from "./i18n.js";
  * at deploy or slow enough not to matter - see poll(scanLogs) below for what belongs where
  * and why.
  *
- * Two write paths exist on the site and neither of them lives in this file: the
- * poke (src/poke.js) and the engraving form (src/engrave.js, reached through the
- * read-only wall module src/wall.js). Both load by dynamic import behind their own
- * click, each pins one contract and one function, and neither can be reached from
- * the default page.
+ * Three write paths exist on the site and none of them lives in this file: the
+ * poke (src/poke.js), the engraving form (src/engrave.js, reached through the
+ * read-only wall module src/wall.js), and the wake (src/wake.js). Each loads by
+ * dynamic import behind its own click, pins one contract and one function, and
+ * none can be reached from the default page.
  *
  * Comment policy: English only (project rule). Prose is: every sentence the page shows
  * lives in src/i18n.js as one {en, zh} pair, so this file owns the reading and the
@@ -588,7 +588,7 @@ async function startViz() {
   }
 }
 
-// The poke module is one of the site's two sanctioned write paths and is
+// The poke module is one of the site's sanctioned write paths and is
 // deliberately NOT part of the default page: it only loads after an explicit
 // opt-in click, stays behind a pinned single-call ABI, and is fenced by its own
 // smoke guards. Nothing in this file ever signs or sends.
@@ -606,6 +606,28 @@ function wirePoke() {
       if (a) a.disabled = false;
     } catch (e) {
       const s = el("poke-status");
+      if (s) label(take(s), "c04.load_fail", { m: (e && e.message) || e });
+    }
+  }, { once: true });
+}
+
+// The wake module is the site's other move-the-animal path -- a permissionless
+// advance(1, genome) the visitor pays for. Same discipline as poke: it is not on
+// the default page, it loads only behind its own click, and src/wake.js pins the
+// brain address and that single call.
+function wireWake() {
+  const b = el("wake-enable");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    try {
+      const m = await import("./wake.js");
+      m.init();
+      label(b, "c04.wake_btn_on");
+      b.disabled = true;
+      const g = el("wake-go");
+      if (g) g.disabled = false;
+    } catch (e) {
+      const s = el("wake-status");
       if (s) label(take(s), "c04.load_fail", { m: (e && e.message) || e });
     }
   }, { once: true });
@@ -664,6 +686,7 @@ async function boot() {
   // not awaited: the animation is fetched while the first reads are already on their way
   startViz();
   wirePoke();
+  wireWake();
   wireReplay();
   wireWall();
   // a language switch re-renders from the reading already in hand, re-renders the static

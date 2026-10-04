@@ -285,12 +285,17 @@
     </div>
     <div class="row"><span class="k" data-i18n="c04.k_result">RESULT</span><span id="poke-status" class="note" data-i18n="c04.status_off">disabled — this page stays read-only until you enable the poke UI</span></div>
     <div class="note" data-i18n="c04.note">
-      The only write path on this site: it encodes exactly one call, SenseAdapter.inject(int256), signed
-      and paid by YOUR own wallet (a few ten-thousandths of BNB). The brain is passive — your current
-      queues into the chemoreceptor and bites on the NEXT advance by a keeper node. Nothing on this
-      page can move, pause or own the animal.
+      Two opt-in write paths live here. Poking encodes exactly one call, SenseAdapter.inject(int256),
+      and only queues current -- it bites on the next advance. Waking encodes WormBrainV2.advance(1,
+      genome), the only control on this site that actually moves the animal: permissionless, paid by
+      YOUR own wallet.
     </div>
     <div class="list" id="poke-feed"></div>
+    <div class="viz-bar">
+      <button id="wake-enable" type="button" data-i18n="c04.wake_enable">ENABLE WAKE UI</button>
+      <button id="wake-go" type="button" disabled data-i18n="c04.wake_go">ADVANCE 1 STEP (you pay gas)</button>
+    </div>
+    <div class="row"><span class="k" data-i18n="c04.k_result">RESULT</span><span id="wake-status" class="note" data-i18n="c04.wake_status_off">disabled — the page stays read-only until you enable the wake UI</span></div>
   </section>
 
   <!-- 4b. INSCRIPTION WALL (read-only view of the immutable WormLedger) -->
