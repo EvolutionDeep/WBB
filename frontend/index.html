@@ -216,15 +216,305 @@
   .guess-feed { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; font-size: 11px; }
   .guess-row { padding: 5px 8px; border-left: 2px solid rgba(255,79,216,0.3); background: rgba(4,10,16,0.4); border-radius: 2px; color: #c8eaf8; }
 </style>
+<style>
+  /* ============================================================
+     THEME v2 - "neural mission control"
+     A pure presentation layer appended after the base rules above.
+     It re-skins every card, button, gauge, list and the header
+     without touching a single element id or data-i18n key, so all
+     wiring and copy stay exactly as the modules expect. Later
+     rules win by source order; nothing here changes behaviour,
+     only how the same live data looks.
+     ============================================================ */
+  :root {
+    --cy: #4ff0ff;
+    --mag: #ff54d6;
+    --vio: #a878ff;
+    --amber: #ffc061;
+    --grn: #38ffa8;
+    --red: #ff5566;
+    --bg: #03050b;
+    --panel: rgba(10, 18, 32, 0.55);
+    --panel-2: rgba(7, 13, 24, 0.74);
+    --line: rgba(90, 200, 255, 0.16);
+    --ink: #cdeefc;
+    --ink-dim: rgba(150, 205, 228, 0.6);
+    --glow-cy: 0 0 18px rgba(79, 240, 255, 0.35);
+  }
+
+  /* ---- layered, slowly living background ---- */
+  body {
+    color: var(--ink);
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(1100px 620px at 82% -12%, rgba(79, 240, 255, 0.10), transparent 62%),
+      radial-gradient(900px 560px at 6% 110%, rgba(255, 84, 214, 0.10), transparent 60%),
+      radial-gradient(760px 520px at 50% 42%, rgba(168, 120, 255, 0.06), transparent 70%);
+    background-attachment: fixed;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgba(90, 200, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90, 200, 255, 0.045) 1px, transparent 1px);
+    background-size: 46px 46px, 46px 46px;
+    -webkit-mask-image: radial-gradient(1000px 720px at 50% 0%, #000 28%, transparent 86%);
+    mask-image: radial-gradient(1000px 720px at 50% 0%, #000 28%, transparent 86%);
+  }
+  body::after {
+    content: ""; position: fixed; left: -30%; top: -45%; width: 160%; height: 190%;
+    z-index: 0; pointer-events: none; opacity: 0.4;
+    background: conic-gradient(from 0deg at 50% 50%, transparent 0deg, rgba(79,240,255,0.07) 42deg, transparent 120deg, rgba(255,84,214,0.06) 220deg, transparent 320deg);
+    animation: sweep 40s linear infinite;
+  }
+  @keyframes sweep { to { transform: rotate(360deg); } }
+  .topbar, .grid, footer { position: relative; z-index: 1; }
+
+  /* ---- top bar / brand ---- */
+  .topbar {
+    max-width: 1180px; margin: 0 auto 20px; padding: 16px 20px;
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+    border: 1px solid var(--line); border-radius: 16px;
+    background: linear-gradient(180deg, rgba(12,22,38,0.72), rgba(6,11,20,0.5));
+    backdrop-filter: blur(14px) saturate(140%);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .brand-mark {
+    width: 42px; height: 42px; border-radius: 50%; flex: none; position: relative;
+    background: radial-gradient(circle at 34% 30%, #d7fbff, var(--cy) 40%, #1b6f8f 72%, #06202c 100%);
+    box-shadow: 0 0 24px rgba(79,240,255,0.55), inset 0 0 12px rgba(255,255,255,0.35);
+  }
+  .brand-mark::after {
+    content: ""; position: absolute; inset: -6px; border-radius: 50%;
+    border: 1px solid rgba(79,240,255,0.45); animation: ping 2.8s ease-out infinite;
+  }
+  @keyframes ping { 0% { transform: scale(0.82); opacity: 0.9; } 100% { transform: scale(1.55); opacity: 0; } }
+  .brand-txt { min-width: 0; }
+  h1 { font-size: 19px; letter-spacing: 0.22em; color: #eafcff; }
+  h1 b {
+    background: linear-gradient(90deg, var(--cy), var(--vio) 58%, var(--mag));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .tagline { max-width: 72ch; font-size: 11px; line-height: 1.6; color: var(--ink-dim); }
+
+  .links { gap: 10px; }
+  .links a, .links button {
+    border-radius: 999px; padding: 6px 14px; font-size: 11px; letter-spacing: 0.08em;
+    border: 1px solid rgba(90,200,255,0.28); background: rgba(79,240,255,0.06);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s;
+  }
+  .links a:hover, .links button:hover {
+    transform: translateY(-1px); border-color: var(--cy);
+    background: rgba(79,240,255,0.14); box-shadow: var(--glow-cy);
+  }
+
+  /* ---- grid rhythm ---- */
+  .grid { gap: 18px; }
+
+  /* ---- cards: glass slab + accent bar + corner bracket ---- */
+  .card {
+    --acc: var(--cy);
+    position: relative; border-radius: 16px; padding: 16px 18px; overflow: hidden;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    backdrop-filter: blur(12px) saturate(135%);
+    box-shadow: 0 8px 34px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.035);
+    transition: transform 0.18s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .card::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--acc), transparent); opacity: 0.9;
+  }
+  .card::after {
+    content: ""; position: absolute; right: 11px; top: 11px; width: 15px; height: 15px;
+    border-top: 1px solid var(--acc); border-right: 1px solid var(--acc);
+    opacity: 0.5; border-top-right-radius: 4px; pointer-events: none;
+  }
+  .card:hover {
+    transform: translateY(-3px);
+    border-color: color-mix(in srgb, var(--acc) 55%, transparent);
+    box-shadow: 0 16px 48px rgba(0,0,0,0.55), 0 0 26px color-mix(in srgb, var(--acc) 22%, transparent);
+  }
+  /* accent colour carries the narrative:
+     live = cyan, sensing = violet, act = magenta, proof = amber, experience = green */
+  #card-viz, #card-identity { --acc: var(--cy); }
+  #card-body, #card-stim { --acc: var(--vio); }
+  #card-poke, #card-wall, #card-guess { --acc: var(--mag); }
+  #card-replay, #card-evidence { --acc: var(--amber); }
+  #card-journal, #card-perceive { --acc: var(--grn); }
+
+  .card h2 {
+    display: flex; align-items: center; gap: 8px; font-size: 12px; letter-spacing: 0.16em; color: var(--ink);
+    border-bottom: 1px solid color-mix(in srgb, var(--acc) 22%, transparent);
+    padding-bottom: 10px; margin-bottom: 12px;
+  }
+  .card h2 .num {
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; color: #04121a;
+    background: linear-gradient(135deg, var(--acc), color-mix(in srgb, var(--acc) 40%, #ffffff));
+    box-shadow: 0 0 14px color-mix(in srgb, var(--acc) 45%, transparent);
+  }
+
+  /* ---- rows / values ---- */
+  .row { font-size: 12px; padding: 4px 0; }
+  .k { color: var(--ink-dim); letter-spacing: 0.08em; }
+  .v { color: var(--cy); font-variant-numeric: tabular-nums; text-shadow: 0 0 12px rgba(79,240,255,0.18); }
+  .v.mag { color: var(--mag); }
+  .note { color: var(--ink-dim); }
+
+  /* ---- identity becomes a full-width vitals console ---- */
+  #card-identity { grid-column: 1 / -1; }
+  #card-identity .vitals { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(168px, 1fr)); }
+  #card-identity .vitals .row {
+    flex-direction: column; align-items: flex-start; gap: 5px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1px solid rgba(90,200,255,0.12); background: rgba(6,12,22,0.5);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  #card-identity .vitals .row:hover { border-color: rgba(79,240,255,0.4); box-shadow: inset 0 0 16px rgba(79,240,255,0.06); }
+  #card-identity .vitals .row .v { text-align: left; font-size: 15px; }
+  #tick { font-size: 30px; line-height: 1; color: #eafcff; text-shadow: 0 0 22px rgba(79,240,255,0.55); }
+
+  /* ---- badges ---- */
+  .badge { border-radius: 999px; padding: 2px 12px; font-size: 11px; letter-spacing: 0.14em; }
+  .badge.live { box-shadow: 0 0 14px rgba(56,255,168,0.4); animation: breathe 2.6s ease-in-out infinite; }
+  @keyframes breathe { 50% { box-shadow: 0 0 22px rgba(56,255,168,0.72); } }
+
+  /* ---- 3D viewer hero ---- */
+  #viz-wrap {
+    height: 540px; border-radius: 12px; border: 1px solid rgba(79,240,255,0.22);
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.6), 0 0 30px rgba(79,240,255,0.08);
+  }
+  #viz-wrap canvas { width: 100% !important; height: 100% !important; border: 0; }
+
+  /* ---- gauges ---- */
+  .gauge .bar { height: 8px; border-radius: 999px; background: rgba(90,200,255,0.12); box-shadow: inset 0 0 6px rgba(0,0,0,0.5); }
+  .gauge .fill { border-radius: 999px; box-shadow: 0 0 12px currentColor; }
+
+  /* ---- buttons: neon pills ---- */
+  .viz-bar button {
+    border-radius: 999px; padding: 7px 16px; letter-spacing: 0.1em; font-size: 11px; color: var(--ink);
+    border: 1px solid rgba(90,200,255,0.3);
+    background: linear-gradient(180deg, rgba(79,240,255,0.12), rgba(79,240,255,0.04));
+    transition: transform 0.14s ease, box-shadow 0.2s ease, background 0.2s ease, border-color 0.2s, opacity 0.2s;
+  }
+  .viz-bar button:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--cy); box-shadow: var(--glow-cy); background: rgba(79,240,255,0.18); color: #eafcff; }
+  .viz-bar button:active:not(:disabled) { transform: translateY(0) scale(0.98); }
+  .viz-bar button.on { background: linear-gradient(180deg, rgba(79,240,255,0.3), rgba(79,240,255,0.14)); border-color: var(--cy); color: #eafcff; box-shadow: var(--glow-cy); }
+  .viz-bar button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* ---- feeds, lists, tiles ---- */
+  .journal-entry, .guess-row, .waker-row, .ev-item, .tile { border-radius: 10px; background: rgba(6,12,22,0.5); }
+  .journal-entry { border-left: 2px solid var(--grn); box-shadow: inset 0 0 18px rgba(0,0,0,0.3); }
+  .guess-row { border-left: 2px solid var(--mag); }
+  .tile.taken { box-shadow: inset 0 0 20px rgba(255,84,214,0.14), 0 0 14px rgba(255,84,214,0.12); }
+  .wall-grid { gap: 8px; }
+  .wall-fields input { border-radius: 8px; border: 1px solid rgba(90,200,255,0.25); background: rgba(2,6,12,0.85); }
+
+  /* ---- canvases scale to their card ---- */
+  #body-canvas, #art-canvas { max-width: 100%; height: auto; border-radius: 10px; }
+
+  /* ---- footer status bar ---- */
+  footer {
+    max-width: 1180px; margin: 20px auto 0; padding: 12px 16px; border-radius: 14px;
+    border: 1px solid var(--line); background: linear-gradient(180deg, rgba(10,18,32,0.6), rgba(6,11,20,0.45));
+    backdrop-filter: blur(10px);
+  }
+  #dot.ok { box-shadow: 0 0 12px var(--grn); animation: breathe 2.6s ease-in-out infinite; }
+
+  /* ---- scrollbar ---- */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgba(90,200,255,0.25); border-radius: 999px; border: 2px solid transparent; background-clip: padding-box; }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(90,200,255,0.45); background-clip: padding-box; }
+  ::-webkit-scrollbar-track { background: rgba(0,0,0,0.2); }
+
+  /* ---- responsive + motion safety ---- */
+  @media (max-width: 860px) {
+    .topbar { flex-direction: column; align-items: flex-start; }
+    #viz-wrap { height: 380px; }
+    #tick { font-size: 24px; }
+  }
+  /* ---- v2.1 layout integrity: kill grid holes and corner overlap ---- */
+  /* half-width cards must pair up evenly between the full-width ones, or an
+     odd one leaves an empty cell beside it. Making poke full-width leaves
+     body|stim and replay|evidence as clean pairs; dense flow backfills any
+     residual hole so a card is never stranded next to blank space. */
+  .grid { grid-auto-flow: row dense; }
+  #card-poke { grid-column: 1 / -1; }
+  .grid > * { min-width: 0; }
+  .card { min-width: 0; }
+  /* keep a long card title clear of the top-right corner bracket */
+  .card h2 { padding-right: 30px; }
+  /* long hashes / addresses must wrap inside a narrow vitals chip, not push it wide */
+  #card-identity .vitals .row .v { word-break: break-all; overflow-wrap: anywhere; }
+  .viz-bar { row-gap: 8px; }
+  .gauge .fill { box-shadow: 0 0 10px rgba(79,240,255,0.45); }
+
+  /* a long on-chain hash has no spaces, so inside a card with overflow:hidden its
+     tail gets clipped on narrow screens (measured from ~450px down). Let long words
+     break rather than be cut off; break-word keeps normal words whole and does not
+     disturb intrinsic sizing, anywhere guarantees the 66-char tx hash wraps. */
+  .card { overflow-wrap: break-word; }
+  .ev-item .desc, .ev .cell { overflow-wrap: anywhere; }
+  /* equalise the vitals chips so the console reads as a tidy grid, not staggered rows */
+  #card-identity .vitals { grid-auto-rows: 1fr; }
+
+  /* ---- responsive: common desktop -> tablet -> phone ---- */
+  @media (max-width: 1100px) {
+    #viz-wrap { height: 460px; }
+  }
+  @media (max-width: 860px) {
+    .topbar { padding: 14px 16px; }
+    h1 { font-size: 17px; letter-spacing: 0.16em; }
+    #viz-wrap { height: 400px; }
+    #card-identity .vitals { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  }
+  @media (max-width: 560px) {
+    body { padding: 12px; }
+    .grid { gap: 14px; }
+    .card { padding: 14px; border-radius: 14px; }
+    .topbar { border-radius: 14px; gap: 12px; }
+    h1 { font-size: 15px; letter-spacing: 0.1em; }
+    .tagline { font-size: 10px; line-height: 1.55; }
+    #viz-wrap { height: 300px; }
+    #tick { font-size: 22px; }
+    #card-identity .vitals { grid-template-columns: 1fr 1fr; gap: 8px; }
+    #card-identity .vitals .row { padding: 8px 10px; }
+    #card-identity .vitals .row .v { font-size: 13px; }
+    .viz-bar { gap: 8px; }
+    .viz-bar button { padding: 7px 12px; font-size: 10px; letter-spacing: 0.05em; }
+    .links { width: 100%; }
+    .links a, .links button { flex: 1 1 auto; text-align: center; padding: 7px 10px; }
+    .wall-fields { grid-template-columns: 1fr; }
+    .wall-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+  }
+  @media (max-width: 380px) {
+    body { padding: 10px; }
+    #card-identity .vitals { grid-template-columns: 1fr; }
+    .brand-mark { width: 34px; height: 34px; }
+    #viz-wrap { height: 260px; }
+    .card h2 { letter-spacing: 0.1em; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    body::after, .brand-mark::after, .badge.live, #dot.ok { animation: none; }
+    .card, .viz-bar button, .links a, .links button { transition: none; }
+  }
+</style>
 </head>
 <body>
-<header>
-  <h1 data-i18n-html="head.h1">Worm<b>Readout</b> · read-only lens</h1>
-  <div class="tagline" data-i18n-html="head.tagline">
-    a permissionless on-chain C. elegans on BSC mainnet · this page <b>reads</b> the deployed
-    WormReadout &amp; SenseAdapter and never advances the animal by itself · the only two ways anything
-    is ever spent here are the opt-in poke and the opt-in engraving, each pinned to one contract and
-    signed by your own wallet
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true"></span>
+    <div class="brand-txt">
+      <h1 data-i18n-html="head.h1">Worm<b>Readout</b> · read-only lens</h1>
+      <div class="tagline" data-i18n-html="head.tagline">
+        a permissionless on-chain C. elegans on BSC mainnet · this page <b>reads</b> the deployed
+        WormReadout &amp; SenseAdapter and never advances the animal by itself · the only two ways anything
+        is ever spent here are the opt-in poke and the opt-in engraving, each pinned to one contract and
+        signed by your own wallet
+      </div>
+    </div>
   </div>
   <nav class="links">
     <a href="https://x.com/WormBrainBsc" target="_blank" rel="noopener me">X · <b>@WormBrainBsc</b></a>
@@ -264,6 +554,7 @@
   <!-- 1. IDENTITY -->
   <section class="card" id="card-identity">
     <h2><span class="num">01</span> · <span data-i18n="c01.title">Identity</span></h2>
+    <div class="vitals">
     <div class="row"><span class="k" data-i18n="c01.k_status">STATUS</span><span id="status-badge"><span class="badge live" data-i18n="c01.connecting">CONNECTING…</span></span></div>
     <div class="row"><span class="k" data-i18n="c01.k_brain">BRAIN</span><a class="v mono" id="brain-addr" target="_blank" rel="noopener">—</a></div>
     <div class="row"><span class="k" data-i18n="c01.k_conn">CONN ROOT</span><span class="v mono" id="conn-root">—</span></div>
@@ -274,6 +565,7 @@
     <div class="row"><span class="k" data-i18n="c01.k_since">BLOCKS SINCE ADVANCE</span><span class="v" id="since-adv">—</span></div>
     <div class="row"><span class="k" data-i18n="c01.k_age">ADVANCE AGE</span><span class="v" id="adv-age">—</span></div>
     <div class="row"><span class="k" data-i18n="c01.k_window">STALE WINDOW</span><span class="v" id="stale-window">—</span></div>
+    </div>
     <div class="note" id="stale-note" data-i18n="c01.note_default">Liveness is judged on elapsed time against the heartbeat this page has measured, not on a block count: BSC now seals a block in well under a second, so a stale window written in blocks no longer means what it did.</div>
   </section>
 
