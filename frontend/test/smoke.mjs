@@ -120,6 +120,12 @@ has(guess.includes('"0xA18f90eF3d4cc543141986c80442F87a2d2a7777"'), "guess pins 
 has(guess.includes("function createRound(uint256 threshold) external"), "guess encodes createRound");
 has(guess.includes("function join(uint256 id, bool yes, uint256 nominal) external"), "guess encodes join");
 has(guess.includes("function approve(address spender, uint256 amount) external"), "guess approves the token");
+has(guess.includes("function settle(uint256 id) external"), "guess encodes settle");
+has(guess.includes("function claim(uint256 id) external"), "guess encodes claim");
+has(guess.includes("function expire(uint256 id) external"), "guess encodes expire");
+has(guess.includes("function stakeOf(uint256 id, address who) view"), "guess reads a wallet position so a winner can claim their own payout");
+has(main.includes("joinCurrent") && main.includes("resolveRounds") && main.includes("claimWins"),
+  "the guess UI wires a live join, a permissionless settle and a self-claim, not a hard-coded round id");
 absent(guess, "advance(", "guess never advances the brain itself");
 absent(guess, "stimulate(", "guess never stimulates the brain");
 absent(guess, "inject(", "guess never touches the adapter");

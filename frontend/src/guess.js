@@ -78,13 +78,22 @@ async function readState() {
     const feed = document.getElementById("guess-feed");
     if (feed) {
       feed.innerHTML = "";
+      const now = Number(tick);
       const from = Math.max(1, Number(count) - 4);
       for (let id = Number(count); id >= from; id--) {
         const r = await guess.rounds(id);
+        const target = Number(r.targetTick);
         const div = document.createElement("div");
         div.className = "guess-row";
-        const statusTxt = r.status === 0 ? "OPEN" : r.status === 1 ? "SETTLED" : "REFUNDED";
-        div.textContent = `#${id} tick>${Number(r.targetTick)} thr=${Number(r.threshold)} YES:${ethers.formatEther(r.yesStake)} NO:${ethers.formatEther(r.noStake)} [${statusTxt}]`;
+        let badge;
+        if (r.status === 0) {
+          badge = target === now ? "SETTLE NOW" : target > now ? "OPEN" : "EXPIRE";
+        } else if (r.status === 1) {
+          badge = (r.yesWins ? "YES" : "NO") + " WON fired=" + Number(r.fired);
+        } else {
+          badge = "REFUNDED";
+        }
+        div.textContent = `#${id} tick>${target} thr=${Number(r.threshold)} YES:${ethers.formatEther(r.yesStake)} NO:${ethers.formatEther(r.noStake)} [${badge}]`;
         feed.appendChild(div);
       }
     }
@@ -134,6 +143,125 @@ export async function joinRound(id, yes, nominal) {
     const rcpt = await tx.wait();
     if (rcpt.status !== 1) throw new Error(t("c04.reverted"));
     label(status, "c10.joined", { side: yes ? "YES" : "NO" });
+    readState();
+  } catch (e) {
+    label(status, "c04.not_sent", { m: (e && e.message) || e });
+  }
+}
+
+// Stake on the newest round that is still joinable, found live from the chain
+// rather than a hard-coded id. The stake is read from minStake() and doubled so a
+// transfer-tax token still lands net-of-tax above the contract's floor instead of
+// reverting on a stake that was exactly the minimum. If no round is open for the
+// coming tick, nothing is spent.
+export async function joinCurrent(yes) {
+  const status = document.getElementById("guess-status");
+  try {
+    if (!window.ethereum) throw new Error(t("c04.no_wallet"));
+    label(status, "c10.approving");
+    const p = await getWriteProvider();
+    const granted = await p.send("eth_requestAccounts", []);
+    if (!granted || !granted.length) throw new Error(t("c04.no_account"));
+    const signer = await p.getSigner(granted[0]);
+    const addr = await signer.getAddress();
+    const rp = await getProvider();
+    const guessR = new ethers.Contract(GUESS, GUESS_ABI, rp);
+    const brainR = new ethers.Contract(BRAIN, BRAIN_ABI, rp);
+    const [count, now, minStake] = await Promise.all([
+      guessR.roundCount(), brainR.tick(), guessR.minStake(),
+    ]);
+    let targetId = 0n;
+    for (let id = Number(count); id >= 1; id--) {
+      const r = await guessR.rounds(id);
+      if (r.status === 0 && Number(r.targetTick) > Number(now)) { targetId = BigInt(id); break; }
+    }
+    if (targetId === 0n) { label(status, "c10.no_open"); return; }
+    const nominal = BigInt(minStake) * 2n;
+    const tokenC = new ethers.Contract(TOKEN, TOKEN_ABI, signer);
+    const allowance = await tokenC.allowance(addr, GUESS);
+    if (allowance < nominal) {
+      const tx2 = await tokenC.approve(GUESS, nominal * 2n);
+      label(status, "c04.tx_sent", { h: tx2.hash.slice(0, 16) + "\u2026" });
+      await tx2.wait();
+    }
+    label(status, "c10.joining");
+    const guess = new ethers.Contract(GUESS, GUESS_ABI, signer);
+    const tx = await guess.join(targetId, yes, nominal);
+    label(status, "c04.tx_sent", { h: tx.hash.slice(0, 16) + "\u2026" });
+    const rcpt = await tx.wait();
+    if (rcpt.status !== 1) throw new Error(t("c04.reverted"));
+    label(status, "c10.joined", { side: yes ? "YES" : "NO", amt: ethers.formatEther(nominal) });
+    readState();
+  } catch (e) {
+    label(status, "c04.not_sent", { m: (e && e.message) || e });
+  }
+}
+
+// Permissionless bookkeeping a visitor can do from the page: settle any open round
+// whose tick has just been reached, and refund any open round whose tick has
+// already passed. The daemon does this automatically every beat; this is the same
+// call for anyone who would rather keep the game honest themselves. It only ever
+// writes to WormGuess, never to the brain.
+export async function resolveRounds() {
+  const status = document.getElementById("guess-status");
+  try {
+    if (!window.ethereum) throw new Error(t("c04.no_wallet"));
+    const p = await getWriteProvider();
+    const granted = await p.send("eth_requestAccounts", []);
+    if (!granted || !granted.length) throw new Error(t("c04.no_account"));
+    const signer = await p.getSigner(granted[0]);
+    const rp = await getProvider();
+    const guessR = new ethers.Contract(GUESS, GUESS_ABI, rp);
+    const brainR = new ethers.Contract(BRAIN, BRAIN_ABI, rp);
+    const [count, now] = await Promise.all([guessR.roundCount(), brainR.tick()]);
+    const guess = new ethers.Contract(GUESS, GUESS_ABI, signer);
+    let did = 0;
+    const from = Math.max(1, Number(count) - 9);
+    for (let id = Number(count); id >= from; id--) {
+      const r = await guessR.rounds(id);
+      if (r.status !== 0) continue;
+      const target = Number(r.targetTick);
+      if (target === Number(now)) {
+        await (await guess.settle(id)).wait(); did++;
+      } else if (target < Number(now)) {
+        await (await guess.expire(id)).wait(); did++;
+      }
+    }
+    label(status, did ? "c10.resolved" : "c10.no_settle", { n: did });
+    readState();
+  } catch (e) {
+    label(status, "c04.not_sent", { m: (e && e.message) || e });
+  }
+}
+
+// Only a winner's own wallet can pull their payout, so this is the one step that
+// cannot be automated by the daemon. For every decided round the connected address
+// staked on and has not yet claimed, claim() pays the pro-rata share (or the full
+// refund on a settled-with-no-winners round) straight back to that address.
+export async function claimWins() {
+  const status = document.getElementById("guess-status");
+  try {
+    if (!window.ethereum) throw new Error(t("c04.no_wallet"));
+    const p = await getWriteProvider();
+    const granted = await p.send("eth_requestAccounts", []);
+    if (!granted || !granted.length) throw new Error(t("c04.no_account"));
+    const signer = await p.getSigner(granted[0]);
+    const addr = await signer.getAddress();
+    const rp = await getProvider();
+    const guessR = new ethers.Contract(GUESS, GUESS_ABI, rp);
+    const count = await guessR.roundCount();
+    const guess = new ethers.Contract(GUESS, GUESS_ABI, signer);
+    let did = 0;
+    const from = Math.max(1, Number(count) - 9);
+    for (let id = Number(count); id >= from; id--) {
+      const r = await guessR.rounds(id);
+      if (r.status === 0) continue;
+      const pos = await guessR.stakeOf(id, addr);
+      if (!pos.claimed && (pos.yes > 0n || pos.no > 0n)) {
+        await (await guess.claim(id)).wait(); did++;
+      }
+    }
+    label(status, did ? "c10.claimed" : "c10.nothing", { n: did });
     readState();
   } catch (e) {
     label(status, "c04.not_sent", { m: (e && e.message) || e });

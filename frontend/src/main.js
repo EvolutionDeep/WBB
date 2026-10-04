@@ -740,9 +740,13 @@ function wireGuess() {
       const cb = el("guess-create");
       const yb = el("guess-yes");
       const nb = el("guess-no");
+      const sb = el("guess-settle");
+      const kb = el("guess-claim");
       if (cb) { cb.disabled = false; cb.addEventListener("click", () => m.createRound(10)); }
-      if (yb) { yb.disabled = false; yb.addEventListener("click", () => m.joinRound(1, true, "1000000000000000000")); }
-      if (nb) { nb.disabled = false; nb.addEventListener("click", () => m.joinRound(1, false, "1000000000000000000")); }
+      if (yb) { yb.disabled = false; yb.addEventListener("click", () => m.joinCurrent(true)); }
+      if (nb) { nb.disabled = false; nb.addEventListener("click", () => m.joinCurrent(false)); }
+      if (sb) { sb.disabled = false; sb.addEventListener("click", () => m.resolveRounds()); }
+      if (kb) { kb.disabled = false; kb.addEventListener("click", () => m.claimWins()); }
     } catch (e) {
       const s = el("guess-status");
       if (s) label(take(s), "c04.load_fail", { m: (e && e.message) || e });

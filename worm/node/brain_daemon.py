@@ -75,6 +75,25 @@ TX_GAS_CAP = 16_777_216
 # The workers.dev edge can 403 bare python UAs; present as a browser instead.
 BROWSER_UA = {"User-Agent": "Mozilla/5.0 (compatible; wbb-brain-node)"}
 
+# A resident node also keeps WormGuess honest: the moment it advances the brain
+# onto a round's target tick, that round is settleable for exactly this window, so
+# the same beat that moved the animal settles the wager against the animal's own
+# counter. Only the four calls below are needed; they are shipped inline so a fresh
+# clone with no hardhat build can still run the game. The signatures must mirror
+# WormGuess.sol exactly, or the selector encoding would silently revert.
+GUESS_ABI_MIN = [
+    {"type": "function", "name": "roundIdForTick", "stateMutability": "view",
+     "inputs": [{"name": "", "type": "uint256"}], "outputs": [{"name": "", "type": "uint256"}]},
+    {"type": "function", "name": "resultOf", "stateMutability": "view",
+     "inputs": [{"name": "id", "type": "uint256"}],
+     "outputs": [{"name": "decided", "type": "bool"}, {"name": "fired", "type": "uint256"},
+                 {"name": "yesWins", "type": "bool"}, {"name": "status", "type": "uint8"}]},
+    {"type": "function", "name": "settle", "stateMutability": "nonpayable",
+     "inputs": [{"name": "id", "type": "uint256"}], "outputs": []},
+    {"type": "function", "name": "expire", "stateMutability": "nonpayable",
+     "inputs": [{"name": "id", "type": "uint256"}], "outputs": []},
+]
+
 
 def _sint(hexstr):
     """Decode a 32-byte hex word as signed int256 (two's complement)."""
@@ -356,6 +375,80 @@ def push_snapshot(args, brain, w3, tag):
         print(f"[push] snapshot {tag} failed: {scrub(e)}", file=sys.stderr)
 
 
+def _guess_write(fn, w3, acct):
+    """Sign and send one WormGuess call; return (gas_cost_wei, acted).
+
+    A revert (a racer moved the tick on, so the settle window closed) is not an
+    error to raise on: it just means this node was not the one to do it, and the
+    refund scan on a later beat will catch the round. The heartbeat must never
+    stumble because a wager bookkeeping call did not land.
+    """
+    try:
+        tx = fn.build_transaction({
+            "from": acct.address, "nonce": w3.eth.get_transaction_count(acct.address),
+            "gasPrice": w3.eth.gas_price, "chainId": 56,
+        })
+        try:
+            est = w3.eth.estimate_gas(tx)
+        except Exception:
+            est = 200_000
+        tx["gas"] = min(int(est * 1.3), TX_GAS_CAP - 77_216)
+        signed = acct.sign_transaction(tx)
+        raw = getattr(signed, "raw_transaction", None) or signed.rawTransaction
+        txh = w3.eth.send_raw_transaction(raw)
+        rcpt = w3.eth.wait_for_transaction_receipt(txh, timeout=120)
+        if rcpt["status"] != 1:
+            return 0, False
+        return rcpt["gasUsed"] * w3.eth.gas_price, True
+    except Exception as e:
+        print(f"[guess] write failed: {scrub(e)}", file=sys.stderr)
+        return 0, False
+
+
+def manage_guess(guess, w3, acct, tick_after):
+    """Settle the round for the tick just reached; refund rounds passed unsettled.
+
+    settle() is legal only while brain.tick() equals the round's target, and this
+    node visits every integer tick one step at a time, so the beat that lands on a
+    target is exactly the beat that can settle it. Anything that slipped past that
+    one-tick window (a racer advanced first, or the node was mid-restart) is then
+    only refundable, so the two ticks just behind are expired back to their
+    stakers. It never calls into the brain: it reads the guess, which reads the
+    animal. Returns (list of human actions, total gas wei spent).
+    """
+    actions, spent = [], 0
+    try:
+        sid = guess.functions.roundIdForTick(tick_after).call()
+    except Exception as e:
+        print(f"[guess] roundIdForTick read failed: {scrub(e)}", file=sys.stderr)
+        return actions, spent
+    if sid:
+        try:
+            status = guess.functions.resultOf(sid).call()[3]
+        except Exception:
+            status = None
+        if status == 0:
+            gas, acted = _guess_write(guess.functions.settle(sid), w3, acct)
+            spent += gas
+            if acted:
+                actions.append(f"settled round #{sid} for tick {tick_after}")
+                return actions, spent
+    for t in (tick_after - 1, tick_after - 2):
+        if t < 1:
+            continue
+        try:
+            rid = guess.functions.roundIdForTick(t).call()
+            status = guess.functions.resultOf(rid).call()[3] if rid else None
+        except Exception:
+            continue
+        if rid and status == 0:
+            gas, acted = _guess_write(guess.functions.expire(rid), w3, acct)
+            spent += gas
+            if acted:
+                actions.append(f"refunded round #{rid} (tick {t} passed)")
+    return actions, spent
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--beats", type=int, default=3, help="number of advance txs when not continuous")
@@ -425,6 +518,14 @@ def main():
     acct = w3.eth.account.from_key(pk)
     brain = w3.eth.contract(address=brain_addr, abi=abi)
 
+    # the same wallet that keeps the animal alive also keeps its prediction game
+    # honest: settle each round on the tick it is about, refund the ones that slip.
+    guess = None
+    if "WormGuess" in rec:
+        guess_addr = Web3.to_checksum_address(rec["WormGuess"]["address"])
+        guess = w3.eth.contract(address=guess_addr, abi=GUESS_ABI_MIN)
+        print(f"guess node      : will settle/refund WormGuess {guess_addr}")
+
     start_balance = w3.eth.get_balance(acct.address)
     spent = 0
     # moving average of the real cost per beat, seeded with the measured V2 step
@@ -477,6 +578,16 @@ def main():
             last_adv = next((e for e in reversed(EVBUF) if e.get("kind") == "Advanced"), None)
             push_journal(args, tick_after, last_adv["fired"] if last_adv else 0, total_spikes, f"beat {beats}")
             push_events(args, f"beat {beats}")
+
+            # settle the wager this very beat made reachable, refund any that missed
+            # its window -- a no-op (no gas) while the game is empty, so it is always
+            # on and never stalls the heart even if the guess chain is unreachable.
+            if guess is not None:
+                acts, gspent = manage_guess(guess, w3, acct, tick_after)
+                if gspent:
+                    spent += gspent
+                if acts:
+                    print(f"[guess] beat {beats}: " + "; ".join(acts))
 
             bal = w3.eth.get_balance(acct.address)
             if Web3.from_wei(bal, "ether") < args.reserve_bnb:
